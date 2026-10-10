@@ -185,14 +185,23 @@
   // ================================================================
   const S = Object.assign({ view: 'builder', sprite: 'pixel' }, store.get('pxi.settings', {}));
   let B = store.get('pxi.builder', null); // builder state
-  let C = store.get('pxi.challenge', null) || newChallenge(); // challenge state
+  // One saved run per challenge mode; C always points at the run for the current view.
+  const RUNS = {
+    challenge: Object.assign(newRun('classic'), store.get('pxi.challenge', {}), { mode: 'classic' }),
+    regions: Object.assign(newRun('regions'), store.get('pxi.regions', {}), { mode: 'regions' }),
+  };
+  const isRun = () => S.view === 'challenge' || S.view === 'regions';
+  let C = RUNS[S.view] || RUNS.challenge;
   let ST = Object.assign({ best: null, bestRec: null, runs: 0 }, store.get('pxi.stats', {}));
+  let SR = Object.assign({ runs: 0, titles: 0, bestScore: null, bestText: null }, store.get('pxi.rstats', {}));
 
   function saveAll() {
     store.set('pxi.settings', S);
     store.set('pxi.builder', B);
-    store.set('pxi.challenge', C);
+    store.set('pxi.challenge', RUNS.challenge);
+    store.set('pxi.regions', RUNS.regions);
     store.set('pxi.stats', ST);
+    store.set('pxi.rstats', SR);
   }
 
   function builderPool() {
@@ -259,7 +268,7 @@
   const benchEl = $('#bench');
 
   function currentSquad() {
-    if (S.view === 'challenge') return { f: C.f, xi: C.xi, subs: [], bench: false };
+    if (isRun()) return { f: C.f, xi: C.xi, subs: [], bench: false };
     return { f: B.f, xi: B.xi, subs: B.subs, bench: B.bench };
   }
 
@@ -303,8 +312,8 @@
   function renderPitch() {
     const sq = currentSquad();
     const f = FORMATIONS[sq.f];
-    const pick = S.view === 'challenge' && C.phase === 'draft' && C.pick ? BY_ID.get(C.pick) : null;
-    playersEl.classList.toggle('locked', S.view === 'challenge');
+    const pick = isRun() && C.phase === 'draft' && C.pick ? BY_ID.get(C.pick) : null;
+    playersEl.classList.toggle('locked', isRun());
 
     // Keyed update so players glide when the formation changes.
     while (playersEl.children.length < 11) {
@@ -314,9 +323,9 @@
       playersEl.appendChild(d);
     }
     let popN = 0;
-    const gaStats = S.view === 'challenge' && C.phase === 'result' && hasGoalData(C.result)
-      ? seasonPlayerStats(C.result, seasonTimer ? liveUpTo : C.result.games.length) : null;
-    const perf = gaStats && !seasonTimer ? perfRatings(C.result) : null;
+    const live = isRun() && (C.phase === 'result' || C.phase === 'national') ? runGames() : null;
+    const gaStats = live ? seasonPlayerStats(live) : null;
+    const perf = live && !seasonTimer ? perfRatings(live) : null;
     f.forEach(([pos, x, y], i) => {
       const el = playersEl.children[i];
       const id = sq.xi[i];
@@ -409,9 +418,9 @@
 
   function render() {
     $('#builder-panel').hidden = S.view !== 'builder';
-    $('#challenge-panel').hidden = S.view !== 'challenge';
+    $('#challenge-panel').hidden = !isRun();
     $$('.mode-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === S.view));
-    document.title = S.view === 'challenge' ? '38–0 Challenge · Pokémon Starting XI' : 'Pokémon Starting XI';
+    document.title = ({ challenge: '38–0 Challenge · ', regions: 'Region League · ' }[S.view] || '') + 'Pokémon Starting XI';
     renderSpriteSegs();
     if (S.view === 'builder') { trackHistory(); renderBuilderPanel(); } else renderChallenge();
     renderPitch();
@@ -426,7 +435,12 @@
       el.innerHTML = '<button data-v="pixel">Pixel</button><button data-v="retro">Retro</button><button data-v="art">Artwork</button>';
     });
 
-    $$('.mode-btn').forEach((b) => b.addEventListener('click', () => { S.view = b.dataset.view; render(); }));
+    $$('.mode-btn').forEach((b) => b.addEventListener('click', () => {
+      if (skipPlayback) skipPlayback();
+      S.view = b.dataset.view;
+      if (RUNS[S.view]) C = RUNS[S.view];
+      render();
+    }));
     $$('[data-sprite-seg]').forEach((el) => el.addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       S.sprite = b.dataset.v; render();
@@ -487,7 +501,7 @@
   function onPointerDown(e) {
     const el = e.target.closest('.player');
     if (!el || e.button > 0) return;
-    if (S.view === 'challenge') {
+    if (isRun()) {
       if (el.classList.contains('placeable')) placePick(+el.dataset.slot);
       return;
     }
@@ -630,8 +644,10 @@
     const w1 = ctx.measureText('My Pokémon ').width;
     ctx.fillStyle = '#5ee08a'; ctx.fillText('Starting XI', PX + w1, 92);
     ctx.fillStyle = '#8b93a1'; ctx.font = '600 26px Inter, sans-serif';
-    const res = S.view === 'challenge' && C.phase === 'result' && C.result ? C.result.me : null;
-    const sub = S.view === 'challenge' ? `38–0 Challenge · ${sq.f}${res ? ` · ${res.w}–${res.d}–${res.l} · ${res.pts} pts · GF ${res.gf} GA ${res.ga}` : ''}` : `${sq.f} · ${REGION[B.gen]}${B.gen ? ' (Gen ' + B.gen + ')' : ' Gens'}`;
+    const res = isRun() && (C.phase === 'result' || C.phase === 'national') && C.result ? C.result.me : null;
+    const mode = C.mode === 'regions' ? `${REGION[C.home]} League` : '38–0 Challenge';
+    const nat = res && C.national ? ` · National: ${NAT_LABEL[C.national.finish]}` : '';
+    const sub = isRun() ? `${mode} · ${sq.f}${res ? ` · ${res.w}–${res.d}–${res.l} · ${ord(res.position)}${nat}` : ''}` : `${sq.f} · ${REGION[B.gen]}${B.gen ? ' (Gen ' + B.gen + ')' : ' Gens'}`;
     ctx.fillText(sub, PX, 130);
 
     // Pitch
@@ -705,8 +721,9 @@
       if (ga) { ctx.fillStyle = '#eef1f5'; ctx.fillText('  ' + ga, cx - lw / 2 + pw2, plateY + 47 * scale); }
     }
 
-    const gaAll = res && hasGoalData(C.result) ? seasonPlayerStats(C.result, C.result.games.length) : null;
-    const prAll = gaAll ? perfRatings(C.result) : null;
+    const allGames = res ? runGames() : null;
+    const gaAll = allGames ? seasonPlayerStats(allGames) : null;
+    const prAll = allGames ? perfRatings(allGames) : null;
     const gaTxt = (st) => (st && (st.g || st.a) ? [st.g ? st.g + 'G' : '', st.a ? st.a + 'A' : ''].filter(Boolean).join(' ') : '');
     f.forEach(([pos, x, y], i) => drawPlayer(PX + (PW * x) / 100, PY + (PH * y) / 100, sq.xi[i], pos, 1, gaAll ? gaTxt(gaAll[i]) : '', prAll ? prAll[i] : null));
 
@@ -733,17 +750,60 @@
   }
 
   // ================================================================
-  // 38–0 Challenge
+  // Runs: 38–0 Challenge ("classic") and Region League ("regions")
   // ================================================================
-  function newChallenge() {
-    return { phase: 'setup', pool: 'all', f: '4-3-3', xi: Array(11).fill(null), round: 0, roll: null, legUsed: 0, rerolls: 2, pick: null, result: null };
+  const HOME_ODDS = 0.75;
+  const REGION_TOWNS = {
+    1: ['Pallet', 'Viridian', 'Pewter', 'Cerulean', 'Vermilion', 'Lavender', 'Celadon', 'Fuchsia', 'Saffron', 'Cinnabar', 'Indigo'],
+    2: ['New Bark', 'Cherrygrove', 'Violet', 'Azalea', 'Goldenrod', 'Ecruteak', 'Olivine', 'Cianwood', 'Mahogany', 'Blackthorn'],
+    3: ['Littleroot', 'Oldale', 'Petalburg', 'Rustboro', 'Dewford', 'Slateport', 'Mauville', 'Verdanturf', 'Fallarbor', 'Lavaridge', 'Fortree', 'Lilycove', 'Mossdeep', 'Sootopolis', 'Pacifidlog'],
+    4: ['Twinleaf', 'Sandgem', 'Jubilife', 'Oreburgh', 'Floaroma', 'Eterna', 'Hearthome', 'Solaceon', 'Veilstone', 'Pastoria', 'Celestic', 'Canalave', 'Snowpoint', 'Sunyshore'],
+    5: ['Nuvema', 'Accumula', 'Striaton', 'Nacrene', 'Castelia', 'Nimbasa', 'Driftveil', 'Mistralton', 'Icirrus', 'Opelucid', 'Lacunosa', 'Undella', 'Humilau', 'Aspertia', 'Virbank'],
+    6: ['Vaniville', 'Aquacorde', 'Santalune', 'Lumiose', 'Camphrier', 'Ambrette', 'Cyllage', 'Geosenge', 'Shalour', 'Coumarine', 'Laverre', 'Dendemille', 'Anistar', 'Couriway', 'Snowbelle'],
+    7: ['Iki Town', "Hau'oli", 'Heahea', 'Paniola', 'Konikoni', 'Malie', 'Tapu Village', 'Seafolk', 'Po Town', 'Hano'],
+    8: ['Postwick', 'Wedgehurst', 'Motostoke', 'Turffield', 'Hulbury', 'Stow-on-Side', 'Ballonlea', 'Hammerlocke', 'Circhester', 'Spikemuth', 'Wyndon'],
+    9: ['Mesagoza', 'Cabo Poco', 'Los Platos', 'Cortondo', 'Artazon', 'Levincia', 'Cascarrafa', 'Porto Marinada', 'Medali', 'Montenevera', 'Alfornada', 'Zapapico'],
+  };
+  // [pattern, isPlaceName] — place-style names are skipped for towns already called "X Town"/"X Village".
+  const CLUB_FORMATS = [['%s FC'], ['%s United'], ['%s City', 1], ['%s Athletic'], ['%s Rovers'], ['%s Wanderers'],
+    ['%s Albion'], ['Real %s'], ['Sporting %s'], ['%s Rangers'], ['Dynamo %s'], ['%s Town', 1]];
+  function clubsFor(gen, n) {
+    const towns = shuffle(REGION_TOWNS[gen].slice());
+    const out = [], used = new Set();
+    for (let i = 0; out.length < n && i < 500; i++) {
+      const raw = towns[i % towns.length];
+      const base = raw.replace(/ (Town|City|Village)$/, '');
+      const fmts = CLUB_FORMATS.filter(([, place]) => !(place && base !== raw));
+      const name = fmts[rand(fmts.length)][0].replace('%s', base);
+      if (!used.has(name)) { used.add(name); out.push(name); }
+    }
+    return out;
   }
 
+  const NAT_STAGES = ['Group stage', 'Quarter-final', 'Semi-final', 'Runner-up', 'Champion'];
+  const NAT_LABEL = { 'Group stage': 'Group stage exit', 'Quarter-final': 'Quarter-finalists', 'Semi-final': 'Semi-finalists', 'Runner-up': 'Runners-up', Champion: '🏆 Champions' };
+
+  function newRun(mode) {
+    return {
+      mode, phase: 'setup', pool: 'all', home: 1, f: '4-3-3', xi: Array(11).fill(null),
+      round: 0, roll: null, legUsed: 0, rerolls: 2, pick: null, result: null, national: null,
+    };
+  }
+  const viewOf = (mode) => (mode === 'regions' ? 'regions' : 'challenge');
+  function resetRun() {
+    const { mode, pool, f, home } = C;
+    C = Object.assign(newRun(mode), { pool, f, home });
+    RUNS[viewOf(mode)] = C;
+  }
+
+  function otherGen(home) { let g; do { g = 1 + rand(9); } while (g === home); return g; }
+
   function rollRound() {
-    const maxGen = C.pool === 'retro' ? 4 : 9;
     const taken = new Set(C.xi);
-    for (let tries = 0; tries < 200; tries++) {
-      const gen = 1 + rand(maxGen);
+    for (let tries = 0; tries < 300; tries++) {
+      const gen = C.mode === 'regions'
+        ? (Math.random() < HOME_ODDS ? C.home : otherGen(C.home))
+        : 1 + rand(C.pool === 'retro' ? 4 : 9);
       const type = TYPES[rand(TYPES.length)];
       const opts = DEX.filter((p) => p.gen === gen && p.types.includes(type) && !taken.has(p.id));
       const usable = opts.filter((p) => !p.leg || C.legUsed < 3);
@@ -767,17 +827,20 @@
 
   // Slot-machine spin: cycle random regions/types, slowing down, then land on the real roll.
   let rolling = false, rollTimer = null;
-  const rollChips = (gen, type, cls = '') =>
-    `<span class="chip region ${cls}">${REGION[gen]} · Gen ${gen}</span><span class="chip ${cls}" style="background:${TYPE_COLORS[type]}">${cap(type)}</span>`;
+  function rollChips(gen, type, cls = '') {
+    const home = C.mode === 'regions' && gen === C.home;
+    return `<span class="chip region${home ? ' home' : ''} ${cls}">${home ? '🏠 ' : ''}${REGION[gen]} · Gen ${gen}</span><span class="chip ${cls}" style="background:${TYPE_COLORS[type]}">${cap(type)}</span>`;
+  }
   function startRoll() {
     clearTimeout(rollTimer);
     if (REDUCE) { rolling = false; render(); return; }
     rolling = true;
     render();
-    const maxGen = C.pool === 'retro' ? 4 : 9, dur = 1100, t0 = performance.now();
+    const run = C;
+    const maxGen = C.mode !== 'regions' && C.pool === 'retro' ? 4 : 9, dur = 1100, t0 = performance.now();
     const tick = () => {
       const t = performance.now() - t0;
-      if (t >= dur || S.view !== 'challenge' || C.phase !== 'draft') {
+      if (t >= dur || C !== run || !isRun() || C.phase !== 'draft') {
         rolling = false;
         render();
         const r = $('#ch-roll');
@@ -791,16 +854,41 @@
     tick();
   }
 
+  const ord = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) ? 0 : n % 10] || 'th');
+  const sgn = (n) => (n > 0 ? '+' : '') + n;
+  const qualifies = () => C.mode === 'regions' && C.result && C.result.me.position <= 4;
+
   function renderChallenge() {
+    const R = C.mode === 'regions';
+    $('#ch-mode-title').textContent = R ? 'Region League' : '38–0 Challenge';
+    $('#ch-lede').textContent = R
+      ? `Pick a home region — 75% of your draft rolls come from there. Fill all 11, play a 38-game regional league, and finish top 4 to reach the National League against the best clubs from every other region.`
+      : 'Each round rolls a region and a type. Draft a matching Pokémon (up to 3 Legendaries) into any open spot, fill all 11, then play a 38-game league season. Can you go 38–0?';
+    $('#ch-pool-wrap').hidden = R;
+    $('#ch-home-wrap').hidden = !R;
     $('#ch-setup').hidden = C.phase !== 'setup';
     $('#ch-draft').hidden = C.phase !== 'draft';
     $('#ch-ready').hidden = C.phase !== 'ready';
-    $('#ch-result').hidden = C.phase !== 'result';
+    $('#ch-result').hidden = !(C.phase === 'result' || C.phase === 'national');
     $$('#ch-pool-seg button').forEach((b) => b.classList.toggle('on', b.dataset.v === C.pool));
     $$('#ch-formation-seg button').forEach((b) => b.classList.toggle('on', b.dataset.v === C.f));
-    $('#st-best').textContent = ST.best == null ? '–' : ST.best + ' pts';
-    $('#st-rec').textContent = ST.bestRec || '–';
-    $('#st-runs').textContent = ST.runs;
+    $$('#ch-home-grid button').forEach((b) => b.classList.toggle('on', +b.dataset.v === C.home));
+    $('#ch-play').textContent = R ? `▶ Play the ${REGION[C.home]} League` : '▶ Play the season';
+
+    if (R) {
+      $('#st-k1').textContent = 'National titles'; $('#st-best').textContent = SR.titles;
+      $('#st-k2').textContent = 'Best finish'; $('#st-rec').textContent = SR.bestText || '–';
+    } else {
+      $('#st-k1').textContent = 'Best points'; $('#st-best').textContent = ST.best == null ? '–' : ST.best + ' pts';
+      $('#st-k2').textContent = 'Best record'; $('#st-rec').textContent = ST.bestRec || '–';
+    }
+    $('#st-runs').textContent = R ? SR.runs : ST.runs;
+
+    const canGoNational = qualifies() && C.phase === 'result' && !C.national;
+    $('#ch-national').hidden = !canGoNational || !!seasonTimer;
+    $('#ch-again').hidden = !!seasonTimer;
+    $('#ch-again').className = canGoNational ? 'btn wide' : 'btn btn-gold';
+    $('#ch-again').textContent = canGoNational ? 'End run' : 'New run';
 
     if (C.phase === 'draft' && C.roll) {
       $('#ch-round').textContent = `Round ${C.round + 1} / 11`;
@@ -836,14 +924,15 @@
           ${p.leg ? '<span class="leg" title="Legendary">★</span>' : ''}</button>`;
       }).join('');
     }
-    if (C.phase === 'result' && C.result && !seasonTimer) renderResult();
+    if ((C.phase === 'result' || C.phase === 'national') && C.result && !seasonTimer) renderResult();
   }
 
+  $('#ch-home-grid').innerHTML = GENS.filter(([g]) => g).map(([g, n]) => `<button data-v="${g}"><b>${n}</b><small>Gen ${g}</small></button>`).join('');
+  $('#ch-home-grid').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; C.home = +b.dataset.v; render(); });
   $('#ch-pool-seg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; C.pool = b.dataset.v; render(); });
   $('#ch-formation-seg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; C.f = b.dataset.v; render(); });
   $('#ch-start').addEventListener('click', () => {
-    const { pool, f } = C;
-    C = newChallenge(); C.pool = pool; C.f = f; C.phase = 'draft';
+    resetRun(); C.phase = 'draft';
     rollRound(); startRoll();
   });
   $('#ch-options').addEventListener('click', (e) => {
@@ -853,80 +942,139 @@
   $('#ch-reroll').addEventListener('click', () => { if (C.rerolls > 0 && !rolling) { C.rerolls--; rollRound(); startRoll(); } });
   $('#ch-quit').addEventListener('click', () => {
     if (!confirm('Abandon this run?')) return;
-    const { pool, f } = C; C = newChallenge(); C.pool = pool; C.f = f; render();
+    resetRun(); render();
   });
-  $('#ch-play').addEventListener('click', () => {
-    C.result = simulateSeason(teamRatings(C.f, C.xi), C.f, C.xi);
-    C.phase = 'result';
-    const r = C.result.me;
-    ST.runs++;
-    const newBest = ST.best == null || r.pts > ST.best;
-    if (newBest) { ST.best = r.pts; ST.bestRec = `${r.w}–${r.d}–${r.l}`; }
-    playSeason(newBest);
-  });
-  $('#ch-again').addEventListener('click', () => { const { pool, f } = C; C = newChallenge(); C.pool = pool; C.f = f; render(); });
+  $('#ch-again').addEventListener('click', () => { resetRun(); render(); });
 
-  // Season playback: tick through matchdays with a live record, then reveal the full result.
-  let seasonTimer = null, liveUpTo = 0;
-  function playSeason(newBest) {
-    liveUpTo = 0;
+  // Track the best Region League finish: national stage beats any league-only finish.
+  function recordRegionFinish() {
+    const pos = C.result.me.position;
+    const score = C.national ? 1 + NAT_STAGES.indexOf(C.national.finish) : (21 - pos) / 100;
+    const text = C.national ? NAT_LABEL[C.national.finish] : `${ord(pos)} in league`;
+    if (SR.bestScore == null || score > SR.bestScore) { SR.bestScore = score; SR.bestText = text; return true; }
+    return false;
+  }
+
+  $('#ch-play').addEventListener('click', () => {
+    const R = C.mode === 'regions';
+    const names = R ? clubsFor(C.home, 19) : shuffle(CLUBS.slice());
+    C.result = simulateSeason(teamRatings(C.f, C.xi), C.f, C.xi, names);
+    C.national = null;
+    C.phase = 'result';
+    resultComp = 'league';
+    const r = C.result.me;
+    let newBest;
+    if (R) { SR.runs++; newBest = recordRegionFinish(); } else {
+      ST.runs++;
+      newBest = ST.best == null || r.pts > ST.best;
+      if (newBest) { ST.best = r.pts; ST.bestRec = `${r.w}–${r.d}–${r.l}`; }
+    }
+    const n = C.result.games.length;
+    playGames(C.result.games, {
+      phase: 'league',
+      label: (g, i) => `Matchday ${i + 1} / ${n}`,
+      short: (g) => `MD${g.md}`,
+      sub: (w, d) => `${w * 3 + d} pts`,
+      streak: (w, d, l) => (l === 0 && d === 0 ? '🔥 Perfect' : l === 0 ? '🛡️ Unbeaten' : ''),
+      delay: (i, l) => (n - i <= 5 ? (l === 0 ? 420 : 220) : 85),
+      onFinish: () => {
+        const me = C.result.me;
+        if (me.position === 1 || me.l === 0) confetti(me.w === 38 ? 320 : 180);
+        else if (R && me.position <= 4) confetti(90);
+        if (R && me.position <= 4) toast('Top 4 — you qualified for the National League!');
+        else if (!R && newBest) toast(`New best: ${me.pts} pts!`);
+      },
+    });
+  });
+
+  $('#ch-national').addEventListener('click', () => {
+    C.national = simulateNational(teamRatings(C.f, C.xi), C.f, C.xi, C.home);
+    C.phase = 'national';
+    resultComp = 'national';
+    if (C.national.finish === 'Champion') SR.titles++;
+    const newBest = recordRegionFinish();
+    playGames(C.national.games, {
+      phase: 'national',
+      label: (g) => g.stage,
+      short: (g) => g.short,
+      sub: (w, d, l, gf, ga) => `GF ${gf} · GA ${ga}`,
+      streak: (w, d, l) => (l === 0 ? '🛡️ Unbeaten' : ''),
+      // Group games tick along; knockout ties get a dramatic pause.
+      delay: (i) => (C.national.games[i] && !C.national.games[i].short.startsWith('G') ? 1100 : 380),
+      onFinish: () => {
+        const fin = C.national.finish;
+        if (fin === 'Champion') { confetti(360); toast('🏆 National Champions!'); } else if (newBest) toast(`New best finish: ${NAT_LABEL[fin]}`);
+      },
+    });
+  });
+
+  // Playback: tick through our games with a live record and pitch stats, then reveal the full result.
+  let seasonTimer = null, liveUpTo = 0, livePhase = 'league', skipPlayback = null;
+  function playGames(games, cfg) {
+    liveUpTo = 0; livePhase = cfg.phase;
     clearTimeout(seasonTimer);
     seasonTimer = 1; // mark as running before render() so it doesn't draw the final result
-    C.phase = 'result';
     render();
-    const { games } = C.result;
     const box = $('#ch-result-box');
-    $('#ch-again').hidden = true;
     box.innerHTML = `
-      <div class="round-row"><div class="box-title">Matchday <span id="lv-md">0</span> / 38</div><span class="streak" id="lv-streak"></span></div>
+      <div class="round-row"><div class="box-title" id="lv-md">Kick-off</div><span class="streak" id="lv-streak"></span></div>
       <div class="record" id="lv-rec">0–0–0</div>
-      <div class="sub" id="lv-pts">0 pts</div>
+      <div class="sub" id="lv-pts">${cfg.sub(0, 0, 0, 0, 0)}</div>
       <div class="ticker" id="lv-tick"><span class="muted">Kick-off…</span></div>
       <div class="form-strip">${games.map(() => '<i class="pending"></i>').join('')}</div>
-      <button class="btn" id="lv-skip">Skip to final table ⏭</button>`;
+      <button class="btn" id="lv-skip">Skip to the end ⏭</button>`;
     const cells = $$('.form-strip i', box);
-    let i = 0, w = 0, d = 0, l = 0;
+    let i = 0, w = 0, d = 0, l = 0, gf = 0, ga = 0;
     const finish = () => {
-      clearTimeout(seasonTimer); seasonTimer = null;
-      renderResult();
-      renderPitch();
-      $('#ch-again').hidden = false;
-      const me = C.result.me;
-      if (me.position === 1 || me.l === 0) confetti(me.w === 38 ? 320 : 180);
-      if (newBest) toast(`New best: ${me.pts} pts!`);
+      clearTimeout(seasonTimer); seasonTimer = null; skipPlayback = null;
+      render();
+      cfg.onFinish();
       saveAll();
     };
+    skipPlayback = finish;
     const step = () => {
-      if (S.view !== 'challenge') { finish(); return; }
       const g = games[i];
       if (g.res === 'W') w++; else if (g.res === 'D') d++; else l++;
-      cells[i].className = g.res + ' flip';
-      cells[i].textContent = g.res;
-      $('#lv-md', box).textContent = i + 1;
+      gf += g.gf; ga += g.ga;
+      const cr = cellRes(g);
+      cells[i].className = cr + ' flip';
+      cells[i].textContent = cr;
+      $('#lv-md', box).textContent = cfg.label(g, i);
       $('#lv-rec', box).textContent = `${w}–${d}–${l}`;
-      $('#lv-pts', box).textContent = `${w * 3 + d} pts`;
+      $('#lv-pts', box).textContent = cfg.sub(w, d, l, gf, ga);
       const t = $('#lv-tick', box);
-      t.innerHTML = `<span class="muted">MD${g.md}</span> ${g.home ? 'vs' : '@'} ${esc(g.opp)} <b class="${g.res}">${g.gf}–${g.ga}</b>`
+      t.innerHTML = `<span class="muted">${cfg.short(g)}</span> ${g.home ? 'vs' : '@'} ${esc(g.opp)}${g.oppRegion ? ` <span class="muted">(${REGION[g.oppRegion]})</span>` : ''} <b class="${cr}">${scoreText(g)}</b>`
         + (g.goals && g.goals.length ? `<div class="scorers">⚽ ${scorerText(g, false)}</div>` : '');
       liveUpTo = i + 1;
       renderPitch();
       t.classList.remove('in'); void t.offsetWidth; t.classList.add('in');
-      $('#lv-streak', box).textContent = l === 0 && d === 0 ? '🔥 Perfect' : l === 0 ? '🛡️ Unbeaten' : '';
+      $('#lv-streak', box).textContent = cfg.streak(w, d, l);
       i++;
-      if (i >= games.length) { seasonTimer = setTimeout(finish, 500); return; }
-      // Slow down for the final stretch — maximum drama when a perfect run is alive.
-      const late = games.length - i <= 5;
-      seasonTimer = setTimeout(step, late ? (l === 0 ? 420 : 220) : 85);
+      if (i >= games.length) { seasonTimer = setTimeout(finish, 600); return; }
+      seasonTimer = setTimeout(step, cfg.delay(i, l));
     };
     $('#lv-skip', box).addEventListener('click', finish);
     if (REDUCE) finish(); else seasonTimer = setTimeout(step, 400);
   }
 
-  // ---------------- Season simulation ----------------
+  // ---------------- Match simulation ----------------
   function poisson(l) { const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= Math.random(); } while (p > L); return k - 1; }
 
+  function playMatch(H, A, homeAdv = true) {
+    const lh = Math.min(5, (homeAdv ? 1.45 : 1.3) * Math.exp((H.attack - A.defense) / 20));
+    const la = Math.min(5, (homeAdv ? 1.15 : 1.3) * Math.exp((A.attack - H.defense) / 20));
+    return { gh: poisson(lh), ga: poisson(la), lh, la };
+  }
+  function tally(t, f, a) {
+    t.p++; t.gf += f; t.ga += a;
+    if (f > a) { t.w++; t.pts += 3; } else if (f === a) { t.d++; t.pts += 1; } else t.l++;
+  }
+  const blankRec = () => ({ p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 });
+  const sortTable = (a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf;
+  const tableRow = (t) => ({ name: t.name, region: t.region, me: !!t.me, p: t.p, w: t.w, d: t.d, l: t.l, gf: t.gf, ga: t.ga, pts: t.pts });
+
   // Who scored / assisted: weighted by line and (hidden) fit for the slot they're playing.
-  function goalEvents(n, fKey, xi) {
+  function goalEvents(n, fKey, xi, lo = 1, hi = 90) {
     const W_SCORE = { GK: 0.004, DEF: 0.12, MID: 0.45, FWD: 1 };
     const W_ASSIST = { GK: 0.03, DEF: 0.35, MID: 1, FWD: 0.6 };
     const ps = FORMATIONS[fKey].map(([pos], i) => {
@@ -940,20 +1088,19 @@
       for (const x of ps) { if (x.i === excl) continue; r -= x[key]; if (r <= 0) return x.i; }
       return ps[ps.length - 1].i;
     };
-    return Array.from({ length: n }, () => 1 + rand(90)).sort((a, b) => a - b).map((m) => {
+    return Array.from({ length: n }, () => lo + rand(hi - lo + 1)).sort((a, b) => a - b).map((m) => {
       const sc = pick('sc');
       return { s: sc, a: Math.random() < 0.78 ? pick('as', sc) : null, m };
     });
   }
 
-  function simulateSeason(tr, fKey, xi) {
-    const names = shuffle(CLUBS.slice());
+  function simulateSeason(tr, fKey, xi, names) {
     const teams = [{ name: 'Your XI', me: true, attack: tr.attack, defense: tr.defense }];
     names.forEach((name, i) => {
       const base = 62 + (22 * i) / (names.length - 1) + (Math.random() * 4 - 2);
       teams.push({ name, attack: base + (Math.random() * 6 - 3), defense: base + (Math.random() * 6 - 3) });
     });
-    teams.forEach((t) => Object.assign(t, { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }));
+    teams.forEach((t) => Object.assign(t, blankRec()));
 
     // Double round-robin via the circle method.
     const n = teams.length, idx = teams.map((_, i) => i), rounds = [];
@@ -970,12 +1117,8 @@
     const myGames = [];
     all.forEach((games, ri) => games.forEach(([h, a]) => {
       const H = teams[h], A = teams[a];
-      const gh = poisson(Math.min(5, 1.45 * Math.exp((H.attack - A.defense) / 20)));
-      const ga = poisson(Math.min(5, 1.15 * Math.exp((A.attack - H.defense) / 20)));
-      for (const [t, f, ag] of [[H, gh, ga], [A, ga, gh]]) {
-        t.p++; t.gf += f; t.ga += ag;
-        if (f > ag) { t.w++; t.pts += 3; } else if (f === ag) { t.d++; t.pts += 1; } else t.l++;
-      }
+      const { gh, ga } = playMatch(H, A);
+      tally(H, gh, ga); tally(A, ga, gh);
       if (H.me || A.me) {
         const home = !!H.me, mine = home ? gh : ga, theirs = home ? ga : gh;
         myGames.push({
@@ -984,23 +1127,106 @@
         });
       }
     }));
-    const table = teams.slice().sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf)
-      .map((t) => ({ name: t.name, me: !!t.me, p: t.p, w: t.w, d: t.d, l: t.l, gf: t.gf, ga: t.ga, pts: t.pts }));
+    const table = teams.slice().sort(sortTable).map(tableRow);
     const me = table.find((t) => t.me);
     me.position = table.indexOf(me) + 1;
     return { me, table, games: myGames };
   }
 
+  // National League: 16 clubs (you + the best of the other regions), 4 groups of 4, then QF / SF / Final.
+  function simulateNational(tr, fKey, xi, home) {
+    const me = { name: 'Your XI', me: true, region: home, attack: tr.attack, defense: tr.defense };
+    let others = [];
+    for (let g = 1; g <= 9; g++) {
+      if (g === home) continue;
+      for (const name of clubsFor(g, 2)) {
+        const base = 74 + Math.random() * 14;
+        others.push({ name, region: g, attack: base + (Math.random() * 6 - 3), defense: base + (Math.random() * 6 - 3) });
+      }
+    }
+    others = shuffle(others).slice(0, 15);
+    const all = [me, ...others];
+    all.forEach((t) => Object.assign(t, blankRec()));
+    const groups = [0, 1, 2, 3].map((gi) => all.slice(gi * 4, gi * 4 + 4));
+    const myGames = [];
+    const addMine = (H, A, gh, ga, extra) => {
+      const isHome = !!H.me, mine = isHome ? gh : ga, theirs = isHome ? ga : gh, opp = isHome ? A : H;
+      myGames.push(Object.assign({
+        md: myGames.length + 1, home: isHome, opp: opp.name, oppRegion: opp.region, gf: mine, ga: theirs,
+        res: mine > theirs ? 'W' : mine === theirs ? 'D' : 'L',
+      }, extra));
+    };
+
+    // Group stage: double round-robin inside each group.
+    const sched = [[[0, 1], [2, 3]], [[2, 0], [1, 3]], [[0, 3], [1, 2]]];
+    sched.concat(sched.map((r) => r.map(([a, b]) => [b, a]))).forEach((round, ri) => groups.forEach((gr) => round.forEach(([a, b]) => {
+      const H = gr[a], A = gr[b];
+      const { gh, ga } = playMatch(H, A);
+      tally(H, gh, ga); tally(A, ga, gh);
+      if (H.me || A.me) addMine(H, A, gh, ga, { stage: `Group · MD${ri + 1}`, short: `G${ri + 1}`, goals: goalEvents(H.me ? gh : ga, fKey, xi) });
+    })));
+    const tables = groups.map((gr) => gr.slice().sort((a, b) => sortTable(a, b) || Math.random() - 0.5));
+
+    // Knockouts: single match, extra time, then penalties.
+    const ko = [];
+    const playKO = (H, A, stage, short, neutral) => {
+      const m = playMatch(H, A, !neutral);
+      let gh = m.gh, ga = m.ga, et = false, pens = null, etH = 0, etA = 0;
+      if (gh === ga) {
+        et = true; etH = poisson(m.lh / 3); etA = poisson(m.la / 3); gh += etH; ga += etA;
+        if (gh === ga) {
+          const pH = clamp(0.5 + ((H.attack + H.defense) - (A.attack + A.defense)) / 200, 0.35, 0.65);
+          const win = 3 + rand(3), lose = Math.max(0, win - 1 - rand(2));
+          pens = Math.random() < pH ? [win, lose] : [lose, win];
+        }
+      }
+      const winner = pens ? (pens[0] > pens[1] ? H : A) : (gh > ga ? H : A);
+      ko.push({ stage, home: H.name, away: A.name, hMe: !!H.me, aMe: !!A.me, hReg: H.region, aReg: A.region, gh, ga, et, pens, winner: winner.name });
+      if (H.me || A.me) {
+        const reg = H.me ? m.gh : m.ga, extra = H.me ? etH : etA;
+        addMine(H, A, gh, ga, {
+          stage, short, et, pens: pens ? (H.me ? pens : [pens[1], pens[0]]) : null, adv: !!winner.me,
+          goals: goalEvents(reg, fKey, xi).concat(goalEvents(extra, fKey, xi, 91, 120)),
+        });
+      }
+      return winner;
+    };
+    const [A, B, Cg, D] = tables;
+    const qf = [[A[0], B[1]], [B[0], A[1]], [Cg[0], D[1]], [D[0], Cg[1]]].map(([h, a]) => playKO(h, a, 'Quarter-final', 'QF'));
+    const sf = [[qf[0], qf[1]], [qf[2], qf[3]]].map((pair) => { const [h, a] = shuffle(pair.slice()); return playKO(h, a, 'Semi-final', 'SF'); });
+    const champ = playKO(sf[0], sf[1], 'Final', 'F', true);
+
+    let finish = 'Group stage';
+    if (A.indexOf(me) <= 1) {
+      const lastMine = ko.filter((k) => k.hMe || k.aMe).pop();
+      if (champ.me) finish = 'Champion';
+      else finish = { 'Quarter-final': 'Quarter-final', 'Semi-final': 'Semi-final', Final: 'Runner-up' }[lastMine.stage];
+    }
+    return { groups: tables.map((t) => t.map(tableRow)), ko, games: myGames, finish };
+  }
+
+  // ---------------- Stats ----------------
   const hasGoalData = (res) => !!(res && res.games && res.games.length && res.games[0].goals);
   const slotName = (i) => (C.xi[i] ? BY_ID.get(C.xi[i]).name : '?');
+  const cellRes = (g) => (g.pens ? (g.adv ? 'W' : 'L') : g.res);
+  const scoreText = (g) => `${g.gf}–${g.ga}${g.pens ? ` (pens ${g.pens[0]}–${g.pens[1]})` : g.et ? ' (aet)' : ''}`;
   function scorerText(g, withAssists = true) {
     return g.goals.map((e) => `${esc(slotName(e.s))} ${e.m}'${withAssists && e.a != null ? ` <span class="muted">(${esc(slotName(e.a))})</span>` : ''}`).join(', ');
   }
 
-  function seasonPlayerStats(res, upTo) {
+  // Games that count toward the pitch badges right now (live during playback, all comps after).
+  function runGames() {
+    if (!hasGoalData(C.result)) return null;
+    const league = C.result.games;
+    if (seasonTimer && livePhase === 'league') return league.slice(0, liveUpTo);
+    if (!C.national) return league;
+    return league.concat(seasonTimer && livePhase === 'national' ? C.national.games.slice(0, liveUpTo) : C.national.games);
+  }
+
+  function seasonPlayerStats(games) {
     const f = FORMATIONS[C.f];
     const st = f.map(() => ({ g: 0, a: 0, cs: 0, motm: 0 }));
-    res.games.slice(0, upTo).forEach((g) => {
+    games.forEach((g) => {
       const score = {};
       for (const e of g.goals || []) {
         st[e.s].g++; score[e.s] = (score[e.s] || 0) + 2;
@@ -1011,17 +1237,18 @@
       let best = null, bv = 0;
       for (const k in score) if (score[k] > bv) { bv = score[k]; best = +k; }
       if (best == null && g.ga === 0) best = 0;
-      if (best != null && g.res !== 'L') st[best].motm++;
+      if (best != null && cellRes(g) !== 'L') st[best].motm++;
     });
     return st;
   }
 
-  // End-of-season performance rating (40–99), earned from output rather than base stats.
-  function perfRatings(res) {
-    const st = seasonPlayerStats(res, res.games.length);
-    const n = res.games.length, me = res.me;
-    const team = (me.pts / n - 1.4) * 10;
-    const gaPg = me.ga / n;
+  // Performance rating (40–99), earned from output rather than base stats.
+  function perfRatings(games) {
+    const st = seasonPlayerStats(games);
+    const n = Math.max(1, games.length);
+    const pts = games.reduce((t, g) => t + (g.res === 'W' ? 3 : g.res === 'D' ? 1 : 0), 0);
+    const team = (pts / n - 1.4) * 10;
+    const gaPg = games.reduce((t, g) => t + g.ga, 0) / n;
     return FORMATIONS[C.f].map(([pos], i) => {
       const { g, a, cs, motm } = st[i];
       const G = g / n, A = a / n, CS = cs / n, M = motm / n;
@@ -1038,8 +1265,8 @@
 
   function teamSeasonStats(games) {
     const rec = () => ({ w: 0, d: 0, l: 0, gf: 0, ga: 0 });
-    const t = { home: rec(), away: rec(), cs: 0, fts: 0, bigWin: null, bigLoss: null, winRun: 0, unbeatenRun: 0, scoringRun: 0 };
-    let wr = 0, ur = 0, sr = 0;
+    const t = { home: rec(), away: rec(), cs: 0, fts: 0, bigWin: null, bigLoss: null, winRun: 0, unbeatenRun: 0 };
+    let wr = 0, ur = 0;
     for (const g of games) {
       const r = g.home ? t.home : t.away;
       r[g.res.toLowerCase()]++; r.gf += g.gf; r.ga += g.ga;
@@ -1048,17 +1275,52 @@
       const margin = g.gf - g.ga;
       if (margin > 0 && (!t.bigWin || margin > t.bigWin.gf - t.bigWin.ga || (margin === t.bigWin.gf - t.bigWin.ga && g.gf > t.bigWin.gf))) t.bigWin = g;
       if (margin < 0 && (!t.bigLoss || margin < t.bigLoss.gf - t.bigLoss.ga)) t.bigLoss = g;
-      wr = g.res === 'W' ? wr + 1 : 0; ur = g.res !== 'L' ? ur + 1 : 0; sr = g.gf > 0 ? sr + 1 : 0;
-      t.winRun = Math.max(t.winRun, wr); t.unbeatenRun = Math.max(t.unbeatenRun, ur); t.scoringRun = Math.max(t.scoringRun, sr);
+      wr = g.res === 'W' ? wr + 1 : 0; ur = g.res !== 'L' ? ur + 1 : 0;
+      t.winRun = Math.max(t.winRun, wr); t.unbeatenRun = Math.max(t.unbeatenRun, ur);
     }
     return t;
   }
 
-  let resultTab = 'squad';
+  // ---------------- Result panel ----------------
+  let resultTab = 'squad', resultComp = 'league';
+
+  function squadBody(games, label) {
+    const st = seasonPlayerStats(games);
+    const pr = perfRatings(games);
+    const rows = FORMATIONS[C.f].map(([pos], i) => ({ i, pos, rtg: pr[i], ...st[i] }));
+    const top = (k) => rows.reduce((b, r) => (r[k] > b[k] ? r : b), rows[0]);
+    const award = (icon, lbl, r, v) => (r && r[v] > 0 ? `<div class="award"><span>${icon}</span><div><small>${lbl}</small><b>${esc(slotName(r.i))}</b></div><em>${r[v]}</em></div>` : '');
+    const gk = rows.find((r) => r.pos === 'GK');
+    rows.sort((a, b) => b.rtg - a.rtg || (b.g + b.a) - (a.g + a.a) || a.i - b.i);
+    return `<div class="awards">
+        ${award('👟', 'Golden Boot', top('g'), 'g')}${award('🎯', 'Top Assists', top('a'), 'a')}
+        ${award('⭐', label, top('rtg'), 'rtg')}${award('🧤', 'Golden Glove', gk, 'cs')}
+      </div>
+      <div class="table-wrap"><table class="league squad">
+      <tr><th class="team">Player</th><th title="Performance rating">RTG</th><th>G</th><th>A</th><th>G+A</th><th title="Clean sheets">CS</th><th title="Man of the match">MOTM</th></tr>
+      ${rows.map((r) => `<tr><td class="team"><span class="ppos" style="color:${posColor(r.pos)}">${r.pos}</span>${esc(slotName(r.i))}</td><td><b style="color:${perfColor(r.rtg)}">${r.rtg}</b></td><td>${r.g}</td><td>${r.a}</td><td><b>${r.g + r.a}</b></td><td>${POS[r.pos].line === 'GK' || POS[r.pos].line === 'DEF' ? r.cs : '–'}</td><td>${r.motm}</td></tr>`).join('')}
+      </table></div>`;
+  }
+  function matchesBody(games, labelFn) {
+    return `<div class="matches">${games.map((g) => `<div class="m">
+      <span class="muted">${labelFn(g)}</span><span class="muted">${g.home ? 'vs' : '@'}</span><span class="opp">${esc(g.opp)}</span><span class="${cellRes(g)}">${cellRes(g)} ${scoreText(g)}</span>
+      ${g.goals && g.goals.length ? `<span class="scorers">${scorerText(g)}</span>` : ''}</div>`).join('')}</div>`;
+  }
+  const tabsHTML = (tabs) => `<div class="seg small result-tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${k === resultTab ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  const formStrip = (games) => `<div class="form-strip">${games.map((g) => `<i class="${cellRes(g)}" title="${esc(g.stage || 'MD' + g.md)} ${g.home ? 'vs' : '@'} ${esc(g.opp)} ${scoreText(g)}">${cellRes(g)}</i>`).join('')}</div>`;
+
   function renderResult() {
+    const R = C.mode === 'regions';
+    const showNat = R && C.national && resultComp === 'national';
+    const compSwitch = R && C.national
+      ? `<div class="seg comp-switch"><button data-comp="league" class="${showNat ? '' : 'on'}">🏠 ${REGION[C.home]} League</button><button data-comp="national" class="${showNat ? 'on' : ''}">🌍 National League</button></div>`
+      : '';
+    $('#ch-result-box').innerHTML = compSwitch + (showNat ? nationalHTML() : leagueHTML());
+  }
+
+  function leagueHTML() {
+    const R = C.mode === 'regions';
     const { me, table, games } = C.result;
-    const ord = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) ? 0 : n % 10] || 'th');
-    const sgn = (n) => (n > 0 ? '+' : '') + n;
     let verdict;
     if (me.w === 38) verdict = '🏆 PERFECT 38–0! Absolute legends.';
     else if (me.l === 0) verdict = '🛡️ Unbeaten — The Invincibles!';
@@ -1067,9 +1329,14 @@
     else if (me.position <= 4) verdict = '⭐ Top-four finish';
     else if (me.position <= 17) verdict = 'Mid-table season';
     else verdict = '⬇️ Relegated…';
-
-    const tabs = [['squad', 'Squad'], ['team', 'Team'], ['table', 'Table'], ['matches', 'Matches']];
-    let body = '';
+    let extra = '';
+    if (R) {
+      extra = me.position > 4 ? '<div class="sub">Missed out on the National League (top 4 qualify).</div>'
+        : C.national ? `<div class="sub qual">🌍 National League: <b>${NAT_LABEL[C.national.finish]}</b></div>`
+          : '<div class="sub qual">✅ Qualified for the National League!</div>';
+    }
+    if (!['squad', 'team', 'table', 'matches'].includes(resultTab)) resultTab = 'squad';
+    let body;
     if (resultTab === 'table') {
       body = `<div class="table-wrap"><table class="league">
         <tr><th>#</th><th class="team">Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr>
@@ -1090,44 +1357,65 @@
       <div class="kv wide"><span>Biggest win</span><b>${score(t.bigWin)}</b></div>
       <div class="kv wide"><span>Heaviest defeat</span><b>${score(t.bigLoss)}</b></div>`;
     } else if (resultTab === 'matches') {
-      body = `<div class="matches">${games.map((g) => `<div class="m">
-        <span class="muted">${g.md}</span><span class="muted">${g.home ? 'vs' : '@'}</span><span class="opp">${esc(g.opp)}</span><span class="${g.res}">${g.res} ${g.gf}–${g.ga}</span>
-        ${g.goals && g.goals.length ? `<span class="scorers">${scorerText(g)}</span>` : ''}</div>`).join('')}</div>`;
+      body = matchesBody(games, (g) => g.md);
     } else if (!hasGoalData(C.result)) {
       body = '<p class="muted small-text">Player stats are tracked for seasons played from now on.</p>';
     } else {
-      const st = seasonPlayerStats(C.result, games.length);
-      const f = FORMATIONS[C.f];
-      const pr = perfRatings(C.result);
-      const rows = f.map(([pos], i) => ({ i, pos, rtg: pr[i], ...st[i] }));
-      const top = (k) => rows.reduce((b, r) => (r[k] > b[k] ? r : b), rows[0]);
-      const award = (icon, label, r, v) => (r && r[v] > 0 ? `<div class="award"><span>${icon}</span><div><small>${label}</small><b>${esc(slotName(r.i))}</b></div><em>${r[v]}</em></div>` : '');
-      const gk = rows.find((r) => r.pos === 'GK');
-      rows.sort((a, b) => b.rtg - a.rtg || (b.g + b.a) - (a.g + a.a) || a.i - b.i);
-      body = `<div class="awards">
-          ${award('👟', 'Golden Boot', top('g'), 'g')}${award('🎯', 'Top Assists', top('a'), 'a')}
-          ${award('⭐', 'Player of the Season', top('rtg'), 'rtg')}${award('🧤', 'Golden Glove', gk, 'cs')}
-        </div>
-        <div class="table-wrap"><table class="league squad">
-        <tr><th class="team">Player</th><th title="Season performance rating">RTG</th><th>G</th><th>A</th><th>G+A</th><th title="Clean sheets">CS</th><th title="Man of the match">MOTM</th></tr>
-        ${rows.map((r) => `<tr><td class="team"><span class="ppos" style="color:${posColor(r.pos)}">${r.pos}</span>${esc(slotName(r.i))}</td><td><b style="color:${perfColor(r.rtg)}">${r.rtg}</b></td><td>${r.g}</td><td>${r.a}</td><td><b>${r.g + r.a}</b></td><td>${POS[r.pos].line === 'GK' || POS[r.pos].line === 'DEF' ? r.cs : '–'}</td><td>${r.motm}</td></tr>`).join('')}
-        </table></div>`;
+      body = squadBody(games, 'Player of the Season');
     }
-
-    $('#ch-result-box').innerHTML = `
-      <div class="box-title">Season result</div>
+    return `
+      <div class="box-title">${R ? `${REGION[C.home]} League` : 'Season result'}</div>
       <div class="record">${me.w}–${me.d}–${me.l}</div>
       <div class="sub">W–D–L · ${me.pts} pts · ${ord(me.position)} place</div>
       <div class="sub">GF ${me.gf} · GA ${me.ga} · GD ${sgn(me.gf - me.ga)}</div>
-      <div class="verdict">${verdict}</div>
-      <div class="form-strip">${games.map((g) => `<i class="${g.res}" title="MD${g.md} ${g.home ? 'vs' : '@'} ${esc(g.opp)} ${g.gf}-${g.ga}">${g.res}</i>`).join('')}</div>
-      <div class="seg small result-tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${k === resultTab ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="verdict">${verdict}</div>${extra}
+      ${formStrip(games)}
+      ${tabsHTML([['squad', 'Squad'], ['team', 'Team'], ['table', 'Table'], ['matches', 'Matches']])}
       <div class="tab-body">${body}</div>`;
   }
+
+  function nationalHTML() {
+    const N = C.national, games = N.games;
+    const rec = games.reduce((r, g) => { r[g.res]++; r.gf += g.gf; r.ga += g.ga; return r; }, { W: 0, D: 0, L: 0, gf: 0, ga: 0 });
+    const verdict = {
+      Champion: '🏆 NATIONAL CHAMPIONS!', 'Runner-up': '🥈 Beaten in the Final', 'Semi-final': 'Knocked out in the Semi-finals',
+      'Quarter-final': 'Knocked out in the Quarter-finals', 'Group stage': 'Eliminated in the group stage',
+    }[N.finish];
+    if (!['squad', 'groups', 'bracket', 'matches'].includes(resultTab)) resultTab = 'squad';
+    const reg = (g) => (g ? `<span class="reg">${REGION[g].slice(0, 3)}</span>` : '');
+    let body;
+    if (resultTab === 'groups') {
+      body = N.groups.map((t, gi) => `<div class="group"><div class="group-title">Group ${'ABCD'[gi]}</div><table class="league">
+        <tr><th>#</th><th class="team">Club</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr>
+        ${t.map((r, i) => `<tr class="${r.me ? 'me' : ''}${i === 1 ? ' cut' : ''}"><td>${i + 1}</td><td class="team">${reg(r.region)}${esc(r.name)}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${sgn(r.gf - r.ga)}</td><td><b>${r.pts}</b></td></tr>`).join('')}
+      </table></div>`).join('');
+    } else if (resultTab === 'bracket') {
+      body = ['Quarter-final', 'Semi-final', 'Final'].map((st) => `<div class="group-title">${st === 'Final' ? 'Final' : st + 's'}</div>
+        ${N.ko.filter((k) => k.stage === st).map((k) => {
+          const side = (name, regn, isMe) => `<span class="${k.winner === name ? 'win' : ''}${isMe ? ' meteam' : ''}">${reg(regn)}${esc(name)}</span>`;
+          return `<div class="tie">${side(k.home, k.hReg, k.hMe)}<b>${k.gh}–${k.ga}</b>${side(k.away, k.aReg, k.aMe)}${k.pens ? `<small>pens ${k.pens[0]}–${k.pens[1]}</small>` : k.et ? '<small>aet</small>' : ''}</div>`;
+        }).join('')}`).join('');
+    } else if (resultTab === 'matches') {
+      body = matchesBody(games, (g) => g.short);
+    } else {
+      body = squadBody(games, 'Player of the Tournament');
+    }
+    return `
+      <div class="box-title">🌍 National League</div>
+      <div class="record">${rec.W}–${rec.D}–${rec.L}</div>
+      <div class="sub">W–D–L · GF ${rec.gf} · GA ${rec.ga} · GD ${sgn(rec.gf - rec.ga)}</div>
+      <div class="verdict">${verdict}</div>
+      ${formStrip(games)}
+      ${tabsHTML([['squad', 'Squad'], ['groups', 'Groups'], ['bracket', 'Bracket'], ['matches', 'Matches']])}
+      <div class="tab-body">${body}</div>`;
+  }
+
   $('#ch-result-box').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-tab]');
-    if (!b) return;
-    resultTab = b.dataset.tab;
+    const t = e.target.closest('[data-tab]');
+    const c = e.target.closest('[data-comp]');
+    if (t) resultTab = t.dataset.tab;
+    else if (c) resultComp = c.dataset.comp;
+    else return;
     renderResult();
   });
 
@@ -1138,7 +1426,9 @@
   if (fromHash) { B = fromHash; S.view = 'builder'; }
   if (!B || !Array.isArray(B.xi) || !FORMATIONS[B.f]) defaultBuilder();
   if (!Array.isArray(B.subs)) B.subs = Array(BENCH_SIZE).fill(null);
-  if (!FORMATIONS[C.f]) C = newChallenge();
+  for (const k in RUNS) if (!FORMATIONS[RUNS[k].f]) RUNS[k] = newRun(RUNS[k].mode);
+  C = RUNS[S.view] || RUNS.challenge;
+  if (NAT_LABEL[SR.bestText]) SR.bestText = NAT_LABEL[SR.bestText]; // older saves stored the raw stage name
 
   initControls();
   render();

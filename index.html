@@ -15,6 +15,7 @@
     <aside class="sidebar">
       <nav class="modes">
         <button class="mode-btn mode-challenge" data-view="challenge">▸ Play 38–0 Challenge</button>
+        <button class="mode-btn mode-regions" data-view="regions">🌍 Region League</button>
         <button class="mode-btn mode-builder" data-view="builder">⚽ XI Builder</button>
       </nav>
 
@@ -53,16 +54,22 @@
 
       <!-- ============ CHALLENGE PANEL ============ -->
       <section id="challenge-panel" class="panel" hidden>
-        <h1>Pokémon <span class="accent">Starting XI</span><br /><span class="gold">38–0 Challenge</span></h1>
-        <p class="lede">Each round rolls a region and a type. Draft a matching Pokémon (up to 3 Legendaries) into any open spot, fill all 11, then play a 38-game league season. Can you go 38–0?</p>
+        <h1>Pokémon <span class="accent">Starting XI</span><br /><span class="gold" id="ch-mode-title">38–0 Challenge</span></h1>
+        <p class="lede" id="ch-lede">Each round rolls a region and a type. Draft a matching Pokémon (up to 3 Legendaries) into any open spot, fill all 11, then play a 38-game league season. Can you go 38–0?</p>
 
         <div id="ch-setup">
           <div class="card-box">
             <div class="box-title">New run</div>
-            <p class="muted small-text">Pick your Pokémon pool and formation. They're locked in for the whole run.</p>
-            <span class="sublabel">Pokémon</span>
-            <div class="seg" id="ch-pool-seg">
-              <button data-v="all">All · Gen 1–9</button><button data-v="retro">Retro · Gen 1–4</button>
+            <p class="muted small-text">Your setup is locked in for the whole run.</p>
+            <div id="ch-pool-wrap">
+              <span class="sublabel">Pokémon</span>
+              <div class="seg" id="ch-pool-seg">
+                <button data-v="all">All · Gen 1–9</button><button data-v="retro">Retro · Gen 1–4</button>
+              </div>
+            </div>
+            <div id="ch-home-wrap" hidden>
+              <span class="sublabel">Home region</span>
+              <div class="gen-grid" id="ch-home-grid"></div>
             </div>
             <span class="sublabel">Formation</span>
             <div class="seg seg-wrap" id="ch-formation-seg"></div>
@@ -96,12 +103,13 @@
 
         <div id="ch-result" hidden>
           <div class="card-box result-box" id="ch-result-box"></div>
+          <button id="ch-national" class="btn btn-gold" hidden>🌍 Play the National League</button>
           <button id="ch-again" class="btn btn-gold">New run</button>
         </div>
 
         <div class="stats-row">
-          <div class="stat"><div class="stat-k">Best points</div><div class="stat-v" id="st-best">–</div></div>
-          <div class="stat"><div class="stat-k">Best record</div><div class="stat-v" id="st-rec">–</div></div>
+          <div class="stat"><div class="stat-k" id="st-k1">Best points</div><div class="stat-v" id="st-best">–</div></div>
+          <div class="stat"><div class="stat-k" id="st-k2">Best record</div><div class="stat-v" id="st-rec">–</div></div>
           <div class="stat"><div class="stat-k">Runs</div><div class="stat-v" id="st-runs">0</div></div>
         </div>
 

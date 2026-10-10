@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pokémon Starting XI</title>
+  <meta name="description" content="Draft your 11-player soccer lineup from Pokémon. Pick a formation, swap players, and share your Starting XI." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <nav class="modes">
+        <button class="mode-btn mode-challenge" data-view="challenge">▸ Play 38–0 Challenge</button>
+        <button class="mode-btn mode-builder" data-view="builder">⚽ XI Builder</button>
+      </nav>
+
+      <!-- ============ BUILDER PANEL ============ -->
+      <section id="builder-panel" class="panel">
+        <h1>Pokémon <span class="accent">Starting XI</span><br />Builder</h1>
+        <p class="lede">Draft your 11-player soccer lineup from Pokémon. Tap a player to swap them out, or drag one onto another to switch spots. Save the image of your lineup and share it with friends.</p>
+
+        <button id="btn-download" class="btn btn-primary">⤓ Download image</button>
+        <div class="btn-grid">
+          <button id="btn-copy" class="btn">🔗 Copy link</button>
+          <button id="btn-random" class="btn">🔀 Randomize</button>
+          <button id="btn-reset" class="btn">↺ Best XI</button>
+          <button id="btn-clear" class="btn">🗑 Clear all</button>
+        </div>
+
+        <div class="team-ratings" id="team-ratings"></div>
+
+        <div class="label-row"><span class="label">Formation</span></div>
+        <div class="seg seg-wrap" id="formation-seg"></div>
+
+        <div class="opts-row">
+          <div class="opt">
+            <span class="sublabel">Bench</span>
+            <div class="seg small" id="bench-seg">
+              <button data-v="0">Off</button><button data-v="1">On</button>
+            </div>
+          </div>
+          <div class="opt">
+            <span class="sublabel">Ratings</span>
+            <div class="seg small" id="ovr-seg">
+              <button data-v="1">Show</button><button data-v="0">Hide</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="label-row">
+          <span class="label">Generation</span>
+          <label class="toggle"><input type="checkbox" id="leg-toggle" /><span class="track"></span><span>Legendaries</span></label>
+        </div>
+        <div class="gen-grid" id="gen-grid"></div>
+
+        <div class="label-row"><span class="label">Sprites</span></div>
+        <div class="seg sprite-seg" data-sprite-seg></div>
+      </section>
+
+      <!-- ============ CHALLENGE PANEL ============ -->
+      <section id="challenge-panel" class="panel" hidden>
+        <h1>Pokémon <span class="accent">Starting XI</span><br /><span class="gold">38–0 Challenge</span></h1>
+        <p class="lede">Each round rolls a region and a type. Draft a matching Pokémon (up to 3 Legendaries) into any open spot, fill all 11, then play a 38-game league season. Can you go 38–0?</p>
+
+        <div id="ch-setup">
+          <div class="card-box">
+            <div class="box-title">New run</div>
+            <p class="muted small-text">Pick your Pokémon pool and formation. They're locked in for the whole run.</p>
+            <span class="sublabel">Pokémon</span>
+            <div class="seg" id="ch-pool-seg">
+              <button data-v="all">All · Gen 1–9</button><button data-v="retro">Retro · Gen 1–4</button>
+            </div>
+            <span class="sublabel">Formation</span>
+            <div class="seg seg-wrap" id="ch-formation-seg"></div>
+            <button id="ch-start" class="btn btn-gold">Start run</button>
+          </div>
+        </div>
+
+        <div id="ch-draft" hidden>
+          <div class="card-box">
+            <div class="round-row">
+              <div class="box-title" id="ch-round">Round 1 / 11</div>
+              <div class="muted small-text" id="ch-leg">Legendaries 0 / 3</div>
+            </div>
+            <div class="roll" id="ch-roll"></div>
+            <p class="muted small-text" id="ch-hint">Pick a Pokémon, then tap an open spot on the pitch.</p>
+            <div class="ch-actions">
+              <button id="ch-reroll" class="btn">🎲 Reroll (2)</button>
+              <button id="ch-quit" class="btn">✕ Abandon run</button>
+            </div>
+          </div>
+          <div class="options" id="ch-options"></div>
+        </div>
+
+        <div id="ch-ready" hidden>
+          <div class="card-box">
+            <div class="box-title">Squad complete!</div>
+            <div class="team-ratings" id="ch-ratings"></div>
+            <button id="ch-play" class="btn btn-gold">▶ Play the season</button>
+          </div>
+        </div>
+
+        <div id="ch-result" hidden>
+          <div class="card-box result-box" id="ch-result-box"></div>
+          <button id="ch-again" class="btn btn-gold">New run</button>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat"><div class="stat-k">Best points</div><div class="stat-v" id="st-best">–</div></div>
+          <div class="stat"><div class="stat-k">Best record</div><div class="stat-v" id="st-rec">–</div></div>
+          <div class="stat"><div class="stat-k">Runs</div><div class="stat-v" id="st-runs">0</div></div>
+        </div>
+
+        <div class="label-row"><span class="label">Sprites</span></div>
+        <div class="seg sprite-seg" data-sprite-seg></div>
+      </section>
+
+      <footer class="foot">
+        <p>Soccer remix of the <a href="https://all22pokemon.com/" target="_blank" rel="noopener">Pokémon All-22</a> football builder.</p>
+        <p>Fan project, not affiliated with Nintendo, Game Freak, or The Pokémon Company. Data &amp; sprites via PokéAPI.</p>
+      </footer>
+    </aside>
+
+    <main class="stage">
+      <div class="pitch-wrap">
+        <div class="pitch" id="pitch">
+          <div class="pitch-lines">
+            <div class="pl-half"></div>
+            <div class="pl-circle"></div>
+            <div class="pl-spot"></div>
+            <div class="pl-box top"></div><div class="pl-six top"></div><div class="pl-arc top"></div>
+            <div class="pl-box bottom"></div><div class="pl-six bottom"></div><div class="pl-arc bottom"></div>
+            <div class="pl-goal top"></div><div class="pl-goal bottom"></div>
+          </div>
+          <div class="players" id="players"></div>
+          <div class="watermark">pokemon starting XI</div>
+        </div>
+        <div class="bench" id="bench" hidden></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Picker modal -->
+  <div class="modal" id="picker" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <span class="pos-chip" id="picker-pos">ST</span>
+        <h2 id="picker-title">Pick a Pokémon</h2>
+        <button class="icon-btn" id="picker-close" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-tools">
+        <input id="picker-search" type="search" placeholder="Search name, #, or type…" autocomplete="off" />
+        <select id="picker-sort">
+          <option value="dex">Sort: Dex #</option>
+          <option value="fit">Sort: Best fit</option>
+        </select>
+        <button class="btn" id="picker-empty">Empty slot</button>
+      </div>
+      <p class="muted small-text pad">Picking someone already in your squad swaps the two. Numbers show how well each Pokémon fits this position.</p>
+      <div class="picker-grid" id="picker-grid"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

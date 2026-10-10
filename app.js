@@ -273,6 +273,33 @@
       <div class="plate"><div class="nm">${esc(p.name)}</div><div class="meta"><span class="pos">${pos}</span></div></div>`;
   }
 
+  // Small "2G 1A" badge on a player's plate; bumps when it changes during playback.
+  function updateGA(el, st) {
+    const meta = el.querySelector('.meta');
+    if (!meta) return;
+    let b = meta.querySelector('.ga');
+    const txt = st && (st.g || st.a) ? `${st.g ? st.g + 'G' : ''}${st.g && st.a ? ' ' : ''}${st.a ? st.a + 'A' : ''}` : '';
+    if (!txt) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement('span'); b.className = 'ga'; meta.appendChild(b); }
+    if (b.textContent !== txt) {
+      b.textContent = txt;
+      if (seasonTimer && !REDUCE) { b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
+    }
+  }
+
+  function updatePerf(el, v) {
+    let b = el.querySelector('.perf');
+    if (v == null) { if (b) b.remove(); return; }
+    if (!b) {
+      b = document.createElement('span');
+      b.className = 'perf';
+      b.title = 'Season performance rating';
+      el.appendChild(b);
+    }
+    b.textContent = v;
+    b.style.setProperty('--rc', perfColor(v));
+  }
+
   function renderPitch() {
     const sq = currentSquad();
     const f = FORMATIONS[sq.f];
@@ -287,6 +314,9 @@
       playersEl.appendChild(d);
     }
     let popN = 0;
+    const gaStats = S.view === 'challenge' && C.phase === 'result' && hasGoalData(C.result)
+      ? seasonPlayerStats(C.result, seasonTimer ? liveUpTo : C.result.games.length) : null;
+    const perf = gaStats && !seasonTimer ? perfRatings(C.result) : null;
     f.forEach(([pos, x, y], i) => {
       const el = playersEl.children[i];
       const id = sq.xi[i];
@@ -307,6 +337,8 @@
         }
       }
       el.dataset.id = id || '';
+      updateGA(el, gaStats && id ? gaStats[i] : null);
+      updatePerf(el, perf && id ? perf[i] : null);
     });
 
     // Bench
@@ -598,7 +630,8 @@
     const w1 = ctx.measureText('My Pokémon ').width;
     ctx.fillStyle = '#5ee08a'; ctx.fillText('Starting XI', PX + w1, 92);
     ctx.fillStyle = '#8b93a1'; ctx.font = '600 26px Inter, sans-serif';
-    const sub = S.view === 'challenge' ? `38–0 Challenge · ${sq.f}` : `${sq.f} · ${REGION[B.gen]}${B.gen ? ' (Gen ' + B.gen + ')' : ' Gens'}`;
+    const res = S.view === 'challenge' && C.phase === 'result' && C.result ? C.result.me : null;
+    const sub = S.view === 'challenge' ? `38–0 Challenge · ${sq.f}${res ? ` · ${res.w}–${res.d}–${res.l} · ${res.pts} pts · GF ${res.gf} GA ${res.ga}` : ''}` : `${sq.f} · ${REGION[B.gen]}${B.gen ? ' (Gen ' + B.gen + ')' : ' Gens'}`;
     ctx.fillText(sub, PX, 130);
 
     // Pitch
@@ -632,7 +665,7 @@
     })));
     ctx.imageSmoothingEnabled = style === 'art';
 
-    function drawPlayer(cx, cy, id, pos, scale) {
+    function drawPlayer(cx, cy, id, pos, scale, ga = '', rtg = null) {
       const size = (style === 'art' ? 128 : 150) * scale;
       const plateY = cy + size * 0.38;
       if (id) {
@@ -645,6 +678,15 @@
         ctx.save(); ctx.setLineDash([8, 6]); ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 4;
         ctx.beginPath(); ctx.arc(cx, cy - size * 0.12, size * 0.34, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
       }
+      if (id && rtg != null) {
+        const rx = cx + size * 0.36, ry = cy - size * 0.5;
+        ctx.fillStyle = 'rgba(12,14,18,.92)';
+        ctx.beginPath(); ctx.arc(rx, ry, 22 * scale, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = perfColor(rtg); ctx.lineWidth = 3; ctx.stroke();
+        ctx.fillStyle = perfColor(rtg); ctx.font = `700 ${Math.round(19 * scale)}px "JetBrains Mono", monospace`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(rtg), rx, ry + 1);
+        ctx.textBaseline = 'alphabetic';
+      }
       const p = id ? BY_ID.get(id) : null;
       const name = p ? p.name.toUpperCase() : 'EMPTY';
       ctx.font = `800 ${Math.round(22 * scale)}px Inter, sans-serif`;
@@ -655,12 +697,18 @@
       ctx.textAlign = 'center'; ctx.fillStyle = p ? '#eef1f5' : '#8b93a1';
       ctx.fillText(name, cx, plateY + 25 * scale);
       ctx.font = `700 ${Math.round(18 * scale)}px "JetBrains Mono", monospace`;
-      ctx.fillStyle = posColor(pos);
-      ctx.fillText(pos, cx, plateY + 47 * scale);
+      const label = pos + (ga ? '  ' + ga : '');
+      const lw = ctx.measureText(label).width, pw2 = ctx.measureText(pos).width;
       ctx.textAlign = 'left';
+      ctx.fillStyle = posColor(pos);
+      ctx.fillText(pos, cx - lw / 2, plateY + 47 * scale);
+      if (ga) { ctx.fillStyle = '#eef1f5'; ctx.fillText('  ' + ga, cx - lw / 2 + pw2, plateY + 47 * scale); }
     }
 
-    f.forEach(([pos, x, y], i) => drawPlayer(PX + (PW * x) / 100, PY + (PH * y) / 100, sq.xi[i], pos, 1));
+    const gaAll = res && hasGoalData(C.result) ? seasonPlayerStats(C.result, C.result.games.length) : null;
+    const prAll = gaAll ? perfRatings(C.result) : null;
+    const gaTxt = (st) => (st && (st.g || st.a) ? [st.g ? st.g + 'G' : '', st.a ? st.a + 'A' : ''].filter(Boolean).join(' ') : '');
+    f.forEach(([pos, x, y], i) => drawPlayer(PX + (PW * x) / 100, PY + (PH * y) / 100, sq.xi[i], pos, 1, gaAll ? gaTxt(gaAll[i]) : '', prAll ? prAll[i] : null));
 
     if (sq.bench) {
       const by = PY + PH + 20;
@@ -808,7 +856,7 @@
     const { pool, f } = C; C = newChallenge(); C.pool = pool; C.f = f; render();
   });
   $('#ch-play').addEventListener('click', () => {
-    C.result = simulateSeason(teamRatings(C.f, C.xi));
+    C.result = simulateSeason(teamRatings(C.f, C.xi), C.f, C.xi);
     C.phase = 'result';
     const r = C.result.me;
     ST.runs++;
@@ -819,8 +867,9 @@
   $('#ch-again').addEventListener('click', () => { const { pool, f } = C; C = newChallenge(); C.pool = pool; C.f = f; render(); });
 
   // Season playback: tick through matchdays with a live record, then reveal the full result.
-  let seasonTimer = null;
+  let seasonTimer = null, liveUpTo = 0;
   function playSeason(newBest) {
+    liveUpTo = 0;
     clearTimeout(seasonTimer);
     seasonTimer = 1; // mark as running before render() so it doesn't draw the final result
     C.phase = 'result';
@@ -840,6 +889,7 @@
     const finish = () => {
       clearTimeout(seasonTimer); seasonTimer = null;
       renderResult();
+      renderPitch();
       $('#ch-again').hidden = false;
       const me = C.result.me;
       if (me.position === 1 || me.l === 0) confetti(me.w === 38 ? 320 : 180);
@@ -856,7 +906,10 @@
       $('#lv-rec', box).textContent = `${w}–${d}–${l}`;
       $('#lv-pts', box).textContent = `${w * 3 + d} pts`;
       const t = $('#lv-tick', box);
-      t.innerHTML = `<span class="muted">MD${g.md}</span> ${g.home ? 'vs' : '@'} ${esc(g.opp)} <b class="${g.res}">${g.gf}–${g.ga}</b>`;
+      t.innerHTML = `<span class="muted">MD${g.md}</span> ${g.home ? 'vs' : '@'} ${esc(g.opp)} <b class="${g.res}">${g.gf}–${g.ga}</b>`
+        + (g.goals && g.goals.length ? `<div class="scorers">⚽ ${scorerText(g, false)}</div>` : '');
+      liveUpTo = i + 1;
+      renderPitch();
       t.classList.remove('in'); void t.offsetWidth; t.classList.add('in');
       $('#lv-streak', box).textContent = l === 0 && d === 0 ? '🔥 Perfect' : l === 0 ? '🛡️ Unbeaten' : '';
       i++;
@@ -872,7 +925,28 @@
   // ---------------- Season simulation ----------------
   function poisson(l) { const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= Math.random(); } while (p > L); return k - 1; }
 
-  function simulateSeason(tr) {
+  // Who scored / assisted: weighted by line and (hidden) fit for the slot they're playing.
+  function goalEvents(n, fKey, xi) {
+    const W_SCORE = { GK: 0.004, DEF: 0.12, MID: 0.45, FWD: 1 };
+    const W_ASSIST = { GK: 0.03, DEF: 0.35, MID: 1, FWD: 0.6 };
+    const ps = FORMATIONS[fKey].map(([pos], i) => {
+      const k = Math.exp((rating(BY_ID.get(xi[i]), pos) - 70) / 12);
+      const line = POS[pos].line;
+      return { i, sc: W_SCORE[line] * k, as: W_ASSIST[line] * k };
+    });
+    const pick = (key, excl) => {
+      const tot = ps.reduce((t, x) => t + (x.i === excl ? 0 : x[key]), 0);
+      let r = Math.random() * tot;
+      for (const x of ps) { if (x.i === excl) continue; r -= x[key]; if (r <= 0) return x.i; }
+      return ps[ps.length - 1].i;
+    };
+    return Array.from({ length: n }, () => 1 + rand(90)).sort((a, b) => a - b).map((m) => {
+      const sc = pick('sc');
+      return { s: sc, a: Math.random() < 0.78 ? pick('as', sc) : null, m };
+    });
+  }
+
+  function simulateSeason(tr, fKey, xi) {
     const names = shuffle(CLUBS.slice());
     const teams = [{ name: 'Your XI', me: true, attack: tr.attack, defense: tr.defense }];
     names.forEach((name, i) => {
@@ -904,7 +978,10 @@
       }
       if (H.me || A.me) {
         const home = !!H.me, mine = home ? gh : ga, theirs = home ? ga : gh;
-        myGames.push({ md: ri + 1, home, opp: (home ? A : H).name, gf: mine, ga: theirs, res: mine > theirs ? 'W' : mine === theirs ? 'D' : 'L' });
+        myGames.push({
+          md: ri + 1, home, opp: (home ? A : H).name, gf: mine, ga: theirs,
+          res: mine > theirs ? 'W' : mine === theirs ? 'D' : 'L', goals: goalEvents(mine, fKey, xi),
+        });
       }
     }));
     const table = teams.slice().sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf)
@@ -914,9 +991,74 @@
     return { me, table, games: myGames };
   }
 
+  const hasGoalData = (res) => !!(res && res.games && res.games.length && res.games[0].goals);
+  const slotName = (i) => (C.xi[i] ? BY_ID.get(C.xi[i]).name : '?');
+  function scorerText(g, withAssists = true) {
+    return g.goals.map((e) => `${esc(slotName(e.s))} ${e.m}'${withAssists && e.a != null ? ` <span class="muted">(${esc(slotName(e.a))})</span>` : ''}`).join(', ');
+  }
+
+  function seasonPlayerStats(res, upTo) {
+    const f = FORMATIONS[C.f];
+    const st = f.map(() => ({ g: 0, a: 0, cs: 0, motm: 0 }));
+    res.games.slice(0, upTo).forEach((g) => {
+      const score = {};
+      for (const e of g.goals || []) {
+        st[e.s].g++; score[e.s] = (score[e.s] || 0) + 2;
+        if (e.a != null) { st[e.a].a++; score[e.a] = (score[e.a] || 0) + 1; }
+      }
+      if (g.ga === 0) f.forEach(([pos], i) => { if (POS[pos].line === 'GK' || POS[pos].line === 'DEF') st[i].cs++; });
+      // Man of the match: biggest goal contribution; a clean-sheet keeper otherwise.
+      let best = null, bv = 0;
+      for (const k in score) if (score[k] > bv) { bv = score[k]; best = +k; }
+      if (best == null && g.ga === 0) best = 0;
+      if (best != null && g.res !== 'L') st[best].motm++;
+    });
+    return st;
+  }
+
+  // End-of-season performance rating (40–99), earned from output rather than base stats.
+  function perfRatings(res) {
+    const st = seasonPlayerStats(res, res.games.length);
+    const n = res.games.length, me = res.me;
+    const team = (me.pts / n - 1.4) * 10;
+    const gaPg = me.ga / n;
+    return FORMATIONS[C.f].map(([pos], i) => {
+      const { g, a, cs, motm } = st[i];
+      const G = g / n, A = a / n, CS = cs / n, M = motm / n;
+      const line = POS[pos].line;
+      let v;
+      if (line === 'FWD') v = 50 + 45 * G + 25 * A + 30 * M;
+      else if (line === 'MID') v = 52 + 55 * G + 45 * A + 30 * M;
+      else if (line === 'DEF') v = 50 + 30 * CS + 45 * G + 30 * A + 30 * M;
+      else v = 50 + 40 * CS - 6 * gaPg + 30 * M;
+      return clamp(Math.round(v + team), 40, 99);
+    });
+  }
+  const perfColor = (v) => (v >= 85 ? '#5ee08a' : v >= 75 ? '#f5c84c' : v >= 65 ? '#d6dbe3' : '#ef5b5b');
+
+  function teamSeasonStats(games) {
+    const rec = () => ({ w: 0, d: 0, l: 0, gf: 0, ga: 0 });
+    const t = { home: rec(), away: rec(), cs: 0, fts: 0, bigWin: null, bigLoss: null, winRun: 0, unbeatenRun: 0, scoringRun: 0 };
+    let wr = 0, ur = 0, sr = 0;
+    for (const g of games) {
+      const r = g.home ? t.home : t.away;
+      r[g.res.toLowerCase()]++; r.gf += g.gf; r.ga += g.ga;
+      if (g.ga === 0) t.cs++;
+      if (g.gf === 0) t.fts++;
+      const margin = g.gf - g.ga;
+      if (margin > 0 && (!t.bigWin || margin > t.bigWin.gf - t.bigWin.ga || (margin === t.bigWin.gf - t.bigWin.ga && g.gf > t.bigWin.gf))) t.bigWin = g;
+      if (margin < 0 && (!t.bigLoss || margin < t.bigLoss.gf - t.bigLoss.ga)) t.bigLoss = g;
+      wr = g.res === 'W' ? wr + 1 : 0; ur = g.res !== 'L' ? ur + 1 : 0; sr = g.gf > 0 ? sr + 1 : 0;
+      t.winRun = Math.max(t.winRun, wr); t.unbeatenRun = Math.max(t.unbeatenRun, ur); t.scoringRun = Math.max(t.scoringRun, sr);
+    }
+    return t;
+  }
+
+  let resultTab = 'squad';
   function renderResult() {
     const { me, table, games } = C.result;
     const ord = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) ? 0 : n % 10] || 'th');
+    const sgn = (n) => (n > 0 ? '+' : '') + n;
     let verdict;
     if (me.w === 38) verdict = '🏆 PERFECT 38–0! Absolute legends.';
     else if (me.l === 0) verdict = '🛡️ Unbeaten — The Invincibles!';
@@ -925,20 +1067,69 @@
     else if (me.position <= 4) verdict = '⭐ Top-four finish';
     else if (me.position <= 17) verdict = 'Mid-table season';
     else verdict = '⬇️ Relegated…';
+
+    const tabs = [['squad', 'Squad'], ['team', 'Team'], ['table', 'Table'], ['matches', 'Matches']];
+    let body = '';
+    if (resultTab === 'table') {
+      body = `<div class="table-wrap"><table class="league">
+        <tr><th>#</th><th class="team">Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr>
+        ${table.map((t, i) => `<tr class="${t.me ? 'me' : ''}${i === 3 || i === 16 ? ' cut' : ''}"><td>${i + 1}</td><td class="team">${esc(t.name)}</td><td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.gf}</td><td>${t.ga}</td><td>${sgn(t.gf - t.ga)}</td><td><b>${t.pts}</b></td></tr>`).join('')}
+      </table></div>`;
+    } else if (resultTab === 'team') {
+      const t = teamSeasonStats(games);
+      const cell = (k, v) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`;
+      const score = (g) => (g ? `${g.gf}–${g.ga} ${g.home ? 'vs' : '@'} ${esc(g.opp)}` : '—');
+      const r = (x) => `${x.w}–${x.d}–${x.l}`;
+      body = `<div class="kv-grid">
+        ${cell('Played', me.p)}${cell('Points', me.pts)}${cell('Won', me.w)}${cell('Drawn', me.d)}${cell('Lost', me.l)}${cell('Win %', Math.round((me.w / me.p) * 100) + '%')}
+        ${cell('Goals for', me.gf)}${cell('Goals against', me.ga)}${cell('Goal diff', sgn(me.gf - me.ga))}${cell('Goals / game', (me.gf / me.p).toFixed(2))}
+        ${cell('Clean sheets', t.cs)}${cell('Failed to score', t.fts)}
+        ${cell('Home', `${r(t.home)} <small>(${t.home.gf}–${t.home.ga})</small>`)}${cell('Away', `${r(t.away)} <small>(${t.away.gf}–${t.away.ga})</small>`)}
+        ${cell('Longest win streak', t.winRun)}${cell('Longest unbeaten', t.unbeatenRun)}
+      </div>
+      <div class="kv wide"><span>Biggest win</span><b>${score(t.bigWin)}</b></div>
+      <div class="kv wide"><span>Heaviest defeat</span><b>${score(t.bigLoss)}</b></div>`;
+    } else if (resultTab === 'matches') {
+      body = `<div class="matches">${games.map((g) => `<div class="m">
+        <span class="muted">${g.md}</span><span class="muted">${g.home ? 'vs' : '@'}</span><span class="opp">${esc(g.opp)}</span><span class="${g.res}">${g.res} ${g.gf}–${g.ga}</span>
+        ${g.goals && g.goals.length ? `<span class="scorers">${scorerText(g)}</span>` : ''}</div>`).join('')}</div>`;
+    } else if (!hasGoalData(C.result)) {
+      body = '<p class="muted small-text">Player stats are tracked for seasons played from now on.</p>';
+    } else {
+      const st = seasonPlayerStats(C.result, games.length);
+      const f = FORMATIONS[C.f];
+      const pr = perfRatings(C.result);
+      const rows = f.map(([pos], i) => ({ i, pos, rtg: pr[i], ...st[i] }));
+      const top = (k) => rows.reduce((b, r) => (r[k] > b[k] ? r : b), rows[0]);
+      const award = (icon, label, r, v) => (r && r[v] > 0 ? `<div class="award"><span>${icon}</span><div><small>${label}</small><b>${esc(slotName(r.i))}</b></div><em>${r[v]}</em></div>` : '');
+      const gk = rows.find((r) => r.pos === 'GK');
+      rows.sort((a, b) => b.rtg - a.rtg || (b.g + b.a) - (a.g + a.a) || a.i - b.i);
+      body = `<div class="awards">
+          ${award('👟', 'Golden Boot', top('g'), 'g')}${award('🎯', 'Top Assists', top('a'), 'a')}
+          ${award('⭐', 'Player of the Season', top('rtg'), 'rtg')}${award('🧤', 'Golden Glove', gk, 'cs')}
+        </div>
+        <div class="table-wrap"><table class="league squad">
+        <tr><th class="team">Player</th><th title="Season performance rating">RTG</th><th>G</th><th>A</th><th>G+A</th><th title="Clean sheets">CS</th><th title="Man of the match">MOTM</th></tr>
+        ${rows.map((r) => `<tr><td class="team"><span class="ppos" style="color:${posColor(r.pos)}">${r.pos}</span>${esc(slotName(r.i))}</td><td><b style="color:${perfColor(r.rtg)}">${r.rtg}</b></td><td>${r.g}</td><td>${r.a}</td><td><b>${r.g + r.a}</b></td><td>${POS[r.pos].line === 'GK' || POS[r.pos].line === 'DEF' ? r.cs : '–'}</td><td>${r.motm}</td></tr>`).join('')}
+        </table></div>`;
+    }
+
     $('#ch-result-box').innerHTML = `
       <div class="box-title">Season result</div>
       <div class="record">${me.w}–${me.d}–${me.l}</div>
-      <div class="sub">W–D–L · ${me.pts} pts · ${ord(me.position)} place · GD ${me.gf - me.ga >= 0 ? '+' : ''}${me.gf - me.ga}</div>
+      <div class="sub">W–D–L · ${me.pts} pts · ${ord(me.position)} place</div>
+      <div class="sub">GF ${me.gf} · GA ${me.ga} · GD ${sgn(me.gf - me.ga)}</div>
       <div class="verdict">${verdict}</div>
       <div class="form-strip">${games.map((g) => `<i class="${g.res}" title="MD${g.md} ${g.home ? 'vs' : '@'} ${esc(g.opp)} ${g.gf}-${g.ga}">${g.res}</i>`).join('')}</div>
-      <details open><summary>League table</summary><div class="table-wrap"><table class="league">
-        <tr><th>#</th><th class="team">Club</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr>
-        ${table.map((t, i) => `<tr class="${t.me ? 'me' : ''}"><td>${i + 1}</td><td class="team">${esc(t.name)}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.gf - t.ga}</td><td>${t.pts}</td></tr>`).join('')}
-      </table></div></details>
-      <details><summary>All 38 results</summary><div class="matches">
-        ${games.map((g) => `<div><span class="muted">${g.md}</span><span class="muted">${g.home ? 'vs' : '@'}</span><span>${esc(g.opp)}</span><span class="${g.res}">${g.res} ${g.gf}–${g.ga}</span></div>`).join('')}
-      </div></details>`;
+      <div class="seg small result-tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${k === resultTab ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="tab-body">${body}</div>`;
   }
+  $('#ch-result-box').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-tab]');
+    if (!b) return;
+    resultTab = b.dataset.tab;
+    renderResult();
+  });
 
   // ================================================================
   // Boot

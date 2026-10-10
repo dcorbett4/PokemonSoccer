@@ -138,7 +138,6 @@ h1 { font-size: 30px; line-height: 1.1; margin: 6px 0 0; font-weight: 800; lette
 .table-wrap { max-height: 240px; overflow-y: auto; }
 details summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); }
 .matches { font-family: var(--mono); font-size: 11.5px; display: grid; gap: 2px; margin-top: 6px; max-height: 220px; overflow-y: auto; }
-.matches div { display: grid; grid-template-columns: 26px 18px 1fr 50px; gap: 6px; }
 .matches .W { color: var(--accent); } .matches .L { color: var(--red); } .matches .D { color: #9aa3b0; }
 
 .foot { margin-top: auto; padding-top: 10px; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
@@ -325,3 +324,39 @@ details summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var
 .stats em { font-style: normal; color: var(--muted); }
 .stats .hl { background: rgba(255, 255, 255, .1); }
 .picker-grid, .options { grid-auto-rows: max-content; align-content: start; }
+
+/* ---------- Season stats ---------- */
+.player .ga { color: #fff; }
+.player .ga.bump { animation: bump .45s cubic-bezier(.3, 1.8, .5, 1); display: inline-block; }
+@keyframes bump { 0% { transform: scale(1.8); color: var(--gold); } 100% { transform: scale(1); } }
+.ticker .scorers { font-size: 11.5px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.result-tabs { margin-top: 4px; }
+.tab-body { display: flex; flex-direction: column; gap: 6px; }
+.league td.team { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.league tr.cut td { border-bottom: 1px dashed #3a414d; }
+.league.squad td.team { max-width: 130px; }
+.ppos { display: inline-block; width: 30px; font-family: var(--mono); font-size: 10px; font-weight: 700; }
+.table-wrap { max-height: 320px; }
+.awards { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.award { display: flex; align-items: center; gap: 7px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px; padding: 6px 8px; min-width: 0; }
+.award > span { font-size: 18px; }
+.award div { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.award small { font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.award b { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.award em { font-style: normal; font-family: var(--mono); font-weight: 700; color: var(--gold); }
+.kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.kv { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; background: var(--panel-2); border-radius: 7px; padding: 5px 8px; font-size: 12px; }
+.kv span { color: var(--muted); }
+.kv b { font-family: var(--mono); font-size: 12px; text-align: right; }
+.kv b small { color: var(--muted); font-weight: 500; }
+.kv.wide b { font-family: Inter, sans-serif; font-weight: 600; }
+.matches { max-height: 320px; }
+.matches .m { display: grid; grid-template-columns: 22px 18px 1fr auto; gap: 2px 6px; padding: 3px 0; border-top: 1px solid #22262e; }
+.matches .m .opp { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.matches .m .scorers { grid-column: 3 / -1; font-family: Inter, sans-serif; font-size: 11px; color: #b5bcc8; }
+.player .perf {
+  position: absolute; top: 0; right: 1.5cqw; min-width: 4.6cqw; height: 4.6cqw; padding: 0 .6cqw; border-radius: 99px;
+  display: grid; place-items: center; font-family: var(--mono); font-weight: 700; font-size: 2.1cqw;
+  background: rgba(12,14,18,.92); color: var(--rc); box-shadow: 0 0 0 .35cqw var(--rc);
+  animation: popIn .45s cubic-bezier(.3, 1.6, .5, 1) both;
+}

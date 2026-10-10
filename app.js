@@ -204,7 +204,11 @@
     };
     requestAnimationFrame(f);
   }
-  const buzz = (ms = 12) => { try { navigator.vibrate && navigator.vibrate(ms); } catch { /* ignore */ } };
+  const TOUCH = matchMedia('(pointer: coarse)').matches;
+  const buzz = (ms = 12) => {
+    if (!TOUCH || !navigator.vibrate || (navigator.userActivation && !navigator.userActivation.hasBeenActive)) return;
+    try { navigator.vibrate(ms); } catch { /* ignore */ }
+  };
   const statLine = (p) => `HP ${p.s.hp} · Atk ${p.s.atk} · Def ${p.s.def} · SpA ${p.s.spa} · SpD ${p.s.spd} · Spe ${p.s.spe}`;
   const cap = (s) => s[0].toUpperCase() + s.slice(1);
 

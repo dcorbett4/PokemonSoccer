@@ -33,24 +33,12 @@
           <button id="btn-clear" class="btn">🗑 Clear</button>
         </div>
 
-        <div class="team-ratings" id="team-ratings"></div>
-
         <div class="label-row"><span class="label">Formation</span></div>
         <div class="seg seg-wrap" id="formation-seg"></div>
 
-        <div class="opts-row">
-          <div class="opt">
-            <span class="sublabel">Bench</span>
-            <div class="seg small" id="bench-seg">
-              <button data-v="0">Off</button><button data-v="1">On</button>
-            </div>
-          </div>
-          <div class="opt">
-            <span class="sublabel">Ratings</span>
-            <div class="seg small" id="ovr-seg">
-              <button data-v="1">Show</button><button data-v="0">Hide</button>
-            </div>
-          </div>
+        <div class="label-row"><span class="label">Bench</span></div>
+        <div class="seg small" id="bench-seg">
+          <button data-v="0">Off</button><button data-v="1">5 subs</button>
         </div>
 
         <div class="label-row">
@@ -101,7 +89,7 @@
         <div id="ch-ready" hidden>
           <div class="card-box">
             <div class="box-title">Squad complete!</div>
-            <div class="team-ratings" id="ch-ratings"></div>
+            <p class="muted small-text">Your XI is locked in. Did you put everyone in the right spot? Only one way to find out.</p>
             <button id="ch-play" class="btn btn-gold">▶ Play the season</button>
           </div>
         </div>
@@ -158,11 +146,17 @@
         <input id="picker-search" type="search" placeholder="Search name, #, or type…" autocomplete="off" />
         <select id="picker-sort">
           <option value="dex">Sort: Dex #</option>
-          <option value="fit">Sort: Best fit</option>
+          <option value="bst">Sort: Total</option>
+          <option value="hp">Sort: HP</option>
+          <option value="atk">Sort: Attack</option>
+          <option value="def">Sort: Defense</option>
+          <option value="spa">Sort: Sp. Atk</option>
+          <option value="spd">Sort: Sp. Def</option>
+          <option value="spe">Sort: Speed</option>
         </select>
         <button class="btn" id="picker-empty">Empty slot</button>
       </div>
-      <p class="muted small-text pad">Picking someone already in your squad swaps the two. Numbers show how well each Pokémon fits this position.</p>
+      <p class="muted small-text pad">Picking someone already in your squad swaps the two. You're the manager — use the base stats to decide who plays where.</p>
       <div class="picker-grid" id="picker-grid"></div>
     </div>
   </div>

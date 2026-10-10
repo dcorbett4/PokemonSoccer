@@ -141,43 +141,6 @@
       defense: 0.55 * def + 0.25 * gk + 0.2 * mid,
     };
   }
-  // Ratings panel: built once, then numbers count and bars slide on every change.
-  function updateRatings(el, r) {
-    if (!el.querySelector('.team-ovr')) {
-      const bar = (k, c) => `<div class="bar-row" data-k="${k}"><span>${k.toUpperCase()}</span><div class="bar"><i style="width:0;background:${c}"></i></div><span class="v">0</span></div>`;
-      el.innerHTML = `<div class="team-ovr"><div class="num">0</div><div class="cap">Team OVR</div><div class="delta"></div></div>
-        ${bar('att', LINES.FWD.color)}${bar('mid', LINES.MID.color)}${bar('def', LINES.DEF.color)}${bar('gk', LINES.GK.color)}`;
-    }
-    const num = el.querySelector('.team-ovr .num');
-    const prev = num.dataset.v == null ? null : +num.dataset.v;
-    tweenNum(num, r.ovr);
-    if (prev != null && prev !== r.ovr) {
-      const d = el.querySelector('.delta');
-      d.textContent = (r.ovr > prev ? '+' : '') + (r.ovr - prev);
-      d.className = 'delta ' + (r.ovr > prev ? 'up' : 'down');
-      void d.offsetWidth;
-      d.classList.add('show');
-    }
-    for (const k of ['att', 'mid', 'def', 'gk']) {
-      const row = el.querySelector(`[data-k="${k}"]`);
-      requestAnimationFrame(() => { row.querySelector('i').style.width = clamp(r[k], 0, 99) + '%'; });
-      tweenNum(row.querySelector('.v'), r[k]);
-    }
-  }
-  function tweenNum(node, to) {
-    const from = +node.dataset.v || 0;
-    node.dataset.v = to;
-    cancelAnimationFrame(node._raf);
-    if (from === to || REDUCE) { node.textContent = to; return; }
-    const t0 = performance.now(), dur = 500;
-    const f = (t) => {
-      const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
-      node.textContent = Math.round(from + (to - from) * e);
-      if (k < 1) node._raf = requestAnimationFrame(f);
-    };
-    node._raf = requestAnimationFrame(f);
-  }
-
   function confetti(n = 160) {
     if (REDUCE) return;
     const c = document.createElement('canvas');
@@ -209,6 +172,11 @@
     if (!TOUCH || !navigator.vibrate || (navigator.userActivation && !navigator.userActivation.hasBeenActive)) return;
     try { navigator.vibrate(ms); } catch { /* ignore */ }
   };
+  const STAT_KEYS = [['hp', 'HP'], ['atk', 'Atk'], ['def', 'Def'], ['spa', 'SpA'], ['spd', 'SpD'], ['spe', 'Spe']];
+  const statCol = (v) => (v >= 110 ? '#5ee08a' : v >= 80 ? '#f5c84c' : v >= 55 ? '#c9ced6' : '#7d8593');
+  const bst = (p) => STAT_KEYS.reduce((t, [k]) => t + p.s[k], 0);
+  const statGrid = (p, hl) => `<span class="stats">${STAT_KEYS.map(([k, l]) =>
+    `<span class="${hl === k ? 'hl' : ''}"><em>${l}</em><b style="color:${statCol(p.s[k])}">${p.s[k]}</b></span>`).join('')}</span>`;
   const statLine = (p) => `HP ${p.s.hp} · Atk ${p.s.atk} · Def ${p.s.def} · SpA ${p.s.spa} · SpD ${p.s.spd} · Spe ${p.s.spe}`;
   const cap = (s) => s[0].toUpperCase() + s.slice(1);
 
@@ -253,7 +221,7 @@
   }
 
   function defaultBuilder() {
-    const b = { f: '4-3-3', gen: 1, leg: false, bench: false, ovr: true, xi: [], subs: Array(BENCH_SIZE).fill(null) };
+    const b = { f: '4-3-3', gen: 1, leg: false, bench: false, xi: [], subs: Array(BENCH_SIZE).fill(null) };
     B = b;
     Object.assign(b, bestXI(b.f, builderPool(), b.bench));
     return b;
@@ -279,7 +247,7 @@
     const f = FORMATIONS[p.get('f')] ? p.get('f') : '4-3-3';
     const gen = clamp(+p.get('g') || 0, 0, 9);
     return {
-      f, gen, leg: p.get('l') === '1', bench: p.get('b') === '1', ovr: true,
+      f, gen, leg: p.get('l') === '1', bench: p.get('b') === '1',
       xi: ids(p.get('x'), 11), subs: ids(p.get('u'), BENCH_SIZE),
     };
   }
@@ -291,23 +259,18 @@
   const benchEl = $('#bench');
 
   function currentSquad() {
-    if (S.view === 'challenge') return { f: C.f, xi: C.xi, subs: [], bench: false, showOvr: true };
-    return { f: B.f, xi: B.xi, subs: B.subs, bench: B.bench, showOvr: B.ovr };
+    if (S.view === 'challenge') return { f: C.f, xi: C.xi, subs: [], bench: false };
+    return { f: B.f, xi: B.xi, subs: B.subs, bench: B.bench };
   }
 
-  function playerInner(id, pos, showOvr, fitText) {
-    const sprite = S.sprite;
+  function playerInner(id, pos) {
     if (!id) {
       return `<div class="slot-ring">+</div>
-        <div class="plate"><div class="nm" style="opacity:.6">Empty</div><div class="meta"><span class="pos">${pos}</span></div></div>
-        <div class="fit">${fitText || ''}</div>`;
+        <div class="plate"><div class="nm" style="opacity:.6">Empty</div><div class="meta"><span class="pos">${pos}</span></div></div>`;
     }
     const p = BY_ID.get(id);
-    const isSub = pos === 'SUB';
-    const r = isSub ? bestPos(p) : { pos, ovr: rating(p, pos) };
-    return `${imgTag(id, sprite, 'sprite')}
-      <div class="plate"><div class="nm">${esc(p.name)}</div>
-      <div class="meta"><span class="pos">${isSub ? r.pos : pos}</span>${showOvr ? `<span class="ovr">${r.ovr}</span>` : ''}</div></div>`;
+    return `${imgTag(id, S.sprite, 'sprite')}
+      <div class="plate"><div class="nm">${esc(p.name)}</div><div class="meta"><span class="pos">${pos}</span></div></div>`;
   }
 
   function renderPitch() {
@@ -332,10 +295,10 @@
       el.style.top = y + '%';
       el.style.setProperty('--pc', posColor(pos));
       el.className = 'player' + (id ? '' : ' empty') + (S.sprite === 'art' ? ' art' : '') + (pick && !id ? ' placeable' : '');
-      const fit = pick && !id ? `${rating(pick, pos)} fit` : '';
-      const key = `${id}|${pos}|${S.sprite}|${sq.showOvr}|${fit}`;
+      el.title = id ? `${BY_ID.get(id).name} — ${statLine(BY_ID.get(id))}` : '';
+      const key = `${id}|${pos}|${S.sprite}`;
       if (el.dataset.key !== key) {
-        el.innerHTML = playerInner(id, pos, sq.showOvr, fit);
+        el.innerHTML = playerInner(id, pos);
         el.dataset.key = key;
         // New face in this slot: pop it in (staggered when many change at once, e.g. Randomize).
         if (id && prevId !== String(id) && !REDUCE) {
@@ -349,11 +312,11 @@
     // Bench
     benchEl.hidden = !sq.bench;
     $('.pitch-wrap').classList.toggle('has-bench', sq.bench);
-    const bkey = `${sq.subs.join('.')}|${S.sprite}|${sq.showOvr}`;
+    const bkey = `${sq.subs.join('.')}|${S.sprite}`;
     if (sq.bench && benchEl.dataset.key !== bkey) {
       benchEl.dataset.key = bkey;
       benchEl.innerHTML = `<div class="bench-title">Substitutes</div><div class="bench-row">${sq.subs.map((id, i) =>
-        `<div class="player${id ? '' : ' empty'}${S.sprite === 'art' ? ' art' : ''}" data-slot="${11 + i}" style="--pc:${LINES.SUB.color}">${playerInner(id, 'SUB', sq.showOvr)}</div>`).join('')}</div>`;
+        `<div class="player${id ? '' : ' empty'}${S.sprite === 'art' ? ' art' : ''}" data-slot="${11 + i}" style="--pc:${LINES.SUB.color}" title="${id ? statLine(BY_ID.get(id)) : ''}">${playerInner(id, 'SUB')}</div>`).join('')}</div>`;
     }
   }
 
@@ -374,10 +337,8 @@
   function renderBuilderPanel() {
     $$('#formation-seg button').forEach((b) => b.classList.toggle('on', b.dataset.v === B.f));
     $$('#bench-seg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (B.bench ? '1' : '0')));
-    $$('#ovr-seg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (B.ovr ? '1' : '0')));
     $$('#gen-grid button').forEach((b) => b.classList.toggle('on', +b.dataset.v === B.gen));
     $('#leg-toggle').checked = B.leg;
-    updateRatings($('#team-ratings'), teamRatings(B.f, B.xi));
     $('#btn-undo').disabled = !undoStack.length;
     $('#btn-redo').disabled = !redoStack.length;
   }
@@ -452,10 +413,6 @@
         B.subs = Array(BENCH_SIZE).fill(null).map((_, i) => (rest[i] ? rest[i][1] : null));
       }
       render();
-    });
-    $('#ovr-seg').addEventListener('click', (e) => {
-      const b = e.target.closest('button'); if (!b) return;
-      B.ovr = b.dataset.v === '1'; render();
     });
     $('#gen-grid').addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
@@ -558,6 +515,7 @@
     $('#picker-title').textContent = `${LINES[lineOf(pos)].name}: pick a Pokémon`;
     $('#picker-search').value = '';
     $('#picker-sort').value = S.sort || 'dex';
+    if (!$('#picker-sort').value) $('#picker-sort').value = 'dex'; // e.g. a removed sort saved earlier
     $('#picker').hidden = false;
     renderPickerGrid();
     const sel = $('#picker-grid .pk.sel');
@@ -573,19 +531,18 @@
     if (q) {
       list = list.filter((p) => p.name.toLowerCase().includes(q) || String(p.id) === q.replace(/^0+/, '') || p.types.includes(q));
     }
-    const fit = (p) => (pos === 'SUB' ? bestPos(p).ovr : rating(p, pos));
-    let rows = list.map((p) => ({ p, fit: fit(p) }));
-    if (sort === 'fit') rows.sort((a, b) => b.fit - a.fit || a.p.id - b.p.id);
+    const val = (p) => (sort === 'bst' ? bst(p) : p.s[sort]);
+    const rows = list.slice();
+    if (sort !== 'dex') rows.sort((a, b) => val(b) - val(a) || a.id - b.id);
     const cur = getSlot(pickerSlot);
     const art = S.sprite === 'art' ? ' art' : '';
-    $('#picker-grid').innerHTML = rows.map(({ p, fit: v }) => {
+    $('#picker-grid').innerHTML = rows.map((p) => {
       const at = findSlot(p.id);
       const tag = at >= 0 ? `<span class="tag">${slotPos(at)}</span>` : '';
-      const col = v >= 85 ? '#5ee08a' : v >= 70 ? '#f5c84c' : '#8b93a1';
-      return `<button class="pk${art}${p.id === cur ? ' sel' : ''}" data-id="${p.id}" title="${statLine(p)}">
-        <span class="fitv" style="color:${col}">${v}</span>${tag}
+      return `<button class="pk${art}${p.id === cur ? ' sel' : ''}" data-id="${p.id}" title="${p.types.map(cap).join(' / ')}">
+        <span class="bst${sort === 'bst' ? ' hl' : ''}" title="Base stat total">${bst(p)}</span>${tag}
         ${imgTag(p.id, S.sprite)}
-        <span class="no">#${String(p.id).padStart(3, '0')}</span><span class="n">${esc(p.name)}</span>${typeDots(p)}
+        <span class="no">#${String(p.id).padStart(3, '0')}</span><span class="n">${esc(p.name)}</span>${typeDots(p)}${statGrid(p, sort)}
         ${p.leg ? '<span class="leg" title="Legendary">★</span>' : ''}</button>`;
     }).join('') || '<p class="muted">No Pokémon match that search.</p>';
   }
@@ -636,7 +593,6 @@
     ctx.fillStyle = '#0b0d10'; ctx.fillRect(0, 0, W, H);
 
     // Header
-    const tr = teamRatings(sq.f, sq.xi);
     ctx.fillStyle = '#eef1f5'; ctx.font = '800 54px Inter, sans-serif'; ctx.textBaseline = 'alphabetic';
     ctx.fillText('My Pokémon ', PX, 92);
     const w1 = ctx.measureText('My Pokémon ').width;
@@ -644,10 +600,6 @@
     ctx.fillStyle = '#8b93a1'; ctx.font = '600 26px Inter, sans-serif';
     const sub = S.view === 'challenge' ? `38–0 Challenge · ${sq.f}` : `${sq.f} · ${REGION[B.gen]}${B.gen ? ' (Gen ' + B.gen + ')' : ' Gens'}`;
     ctx.fillText(sub, PX, 130);
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#eef1f5'; ctx.font = '700 64px "JetBrains Mono", monospace'; ctx.fillText(String(tr.ovr), W - PX, 96);
-    ctx.fillStyle = '#8b93a1'; ctx.font = '700 20px Inter, sans-serif'; ctx.fillText('TEAM OVR', W - PX, 128);
-    ctx.textAlign = 'left';
 
     // Pitch
     ctx.save();
@@ -695,8 +647,6 @@
       }
       const p = id ? BY_ID.get(id) : null;
       const name = p ? p.name.toUpperCase() : 'EMPTY';
-      const isSub = pos === 'SUB';
-      const r = p ? (isSub ? bestPos(p) : { pos, ovr: rating(p, pos) }) : { pos, ovr: '' };
       ctx.font = `800 ${Math.round(22 * scale)}px Inter, sans-serif`;
       const nw = ctx.measureText(name).width;
       const pw = Math.max(nw + 28 * scale, 140 * scale), ph = 56 * scale;
@@ -705,14 +655,9 @@
       ctx.textAlign = 'center'; ctx.fillStyle = p ? '#eef1f5' : '#8b93a1';
       ctx.fillText(name, cx, plateY + 25 * scale);
       ctx.font = `700 ${Math.round(18 * scale)}px "JetBrains Mono", monospace`;
-      const posTxt = isSub && p ? r.pos : pos;
-      const ovrTxt = p && sq.showOvr ? '  ' + r.ovr : '';
-      const totalW = ctx.measureText(posTxt + ovrTxt).width;
+      ctx.fillStyle = posColor(pos);
+      ctx.fillText(pos, cx, plateY + 47 * scale);
       ctx.textAlign = 'left';
-      ctx.fillStyle = isSub ? LINES.SUB.color : posColor(pos);
-      ctx.fillText(posTxt, cx - totalW / 2, plateY + 47 * scale);
-      ctx.fillStyle = '#d6dbe3';
-      ctx.fillText(ovrTxt, cx - totalW / 2 + ctx.measureText(posTxt).width, plateY + 47 * scale);
     }
 
     f.forEach(([pos, x, y], i) => drawPlayer(PX + (PW * x) / 100, PY + (PH * y) / 100, sq.xi[i], pos, 1));
@@ -825,10 +770,9 @@
       $('#ch-hint').textContent = C.pick
         ? `Now tap a glowing open spot to place ${BY_ID.get(C.pick).name}.`
         : 'Pick a Pokémon, then tap an open spot on the pitch.';
-      const f = FORMATIONS[C.f];
-      const open = f.map(([pos], i) => (C.xi[i] ? null : pos)).filter(Boolean);
+      const open = C.xi.map((v, i) => (v ? '' : i)).join('.');
       const art = S.sprite === 'art' ? ' art' : '';
-      const okey = `${C.roll.ids.join('.')}|${open.join('.')}|${C.legUsed}|${S.sprite}`;
+      const okey = `${C.roll.ids.join('.')}|${open}|${C.legUsed}|${S.sprite}`;
       if (opts.dataset.key === okey) {
         // Same roll: just move the selection highlight instead of rebuilding (no flicker).
         $$('.pk', opts).forEach((b) => b.classList.toggle('sel', +b.dataset.id === C.pick));
@@ -837,17 +781,13 @@
       opts.dataset.key = okey;
       opts.innerHTML = C.roll.ids.map((id, n) => {
         const p = BY_ID.get(id);
-        let bp = open[0], bv = -1;
-        for (const pos of open) { const v = rating(p, pos); if (v > bv) { bv = v; bp = pos; } }
         const locked = p.leg && C.legUsed >= 3;
-        const col = bv >= 85 ? '#5ee08a' : bv >= 70 ? '#f5c84c' : '#8b93a1';
-        return `<button class="pk deal${art}${C.pick === id ? ' sel' : ''}" data-id="${id}" style="--i:${Math.min(n, 24)}" title="${locked ? 'Legendary limit reached' : statLine(p)}" ${locked ? 'disabled' : ''}>
-          <span class="fitv" style="color:${col}">${bv}</span><span class="tag" style="color:${posColor(bp)}">${bp}</span>
-          ${imgTag(id, S.sprite)}<span class="n">${esc(p.name)}</span>${typeDots(p)}
+        return `<button class="pk deal${art}${C.pick === id ? ' sel' : ''}" data-id="${id}" style="--i:${Math.min(n, 24)}" title="${locked ? 'Legendary limit reached' : p.types.map(cap).join(' / ')}" ${locked ? 'disabled' : ''}>
+          <span class="bst" title="Base stat total">${bst(p)}</span>
+          ${imgTag(id, S.sprite)}<span class="n">${esc(p.name)}</span>${typeDots(p)}${statGrid(p)}
           ${p.leg ? '<span class="leg" title="Legendary">★</span>' : ''}</button>`;
       }).join('');
     }
-    if (C.phase === 'ready') updateRatings($('#ch-ratings'), teamRatings(C.f, C.xi));
     if (C.phase === 'result' && C.result && !seasonTimer) renderResult();
   }
 

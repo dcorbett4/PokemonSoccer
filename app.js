@@ -78,6 +78,7 @@
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const rand = (n) => Math.floor(Math.random() * n);
   const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -140,11 +141,72 @@
       defense: 0.55 * def + 0.25 * gk + 0.2 * mid,
     };
   }
-  function ratingsHTML(r) {
-    const bar = (k, v, c) => `<div class="bar-row"><span>${k}</span><div class="bar"><i style="width:${clamp(v, 0, 99)}%;background:${c}"></i></div><span class="v">${v}</span></div>`;
-    return `<div class="team-ovr"><div class="num">${r.ovr}</div><div class="cap">Team OVR</div></div>
-      ${bar('ATT', r.att, LINES.FWD.color)}${bar('MID', r.mid, LINES.MID.color)}${bar('DEF', r.def, LINES.DEF.color)}${bar('GK', r.gk, LINES.GK.color)}`;
+  // Ratings panel: built once, then numbers count and bars slide on every change.
+  function updateRatings(el, r) {
+    if (!el.querySelector('.team-ovr')) {
+      const bar = (k, c) => `<div class="bar-row" data-k="${k}"><span>${k.toUpperCase()}</span><div class="bar"><i style="width:0;background:${c}"></i></div><span class="v">0</span></div>`;
+      el.innerHTML = `<div class="team-ovr"><div class="num">0</div><div class="cap">Team OVR</div><div class="delta"></div></div>
+        ${bar('att', LINES.FWD.color)}${bar('mid', LINES.MID.color)}${bar('def', LINES.DEF.color)}${bar('gk', LINES.GK.color)}`;
+    }
+    const num = el.querySelector('.team-ovr .num');
+    const prev = num.dataset.v == null ? null : +num.dataset.v;
+    tweenNum(num, r.ovr);
+    if (prev != null && prev !== r.ovr) {
+      const d = el.querySelector('.delta');
+      d.textContent = (r.ovr > prev ? '+' : '') + (r.ovr - prev);
+      d.className = 'delta ' + (r.ovr > prev ? 'up' : 'down');
+      void d.offsetWidth;
+      d.classList.add('show');
+    }
+    for (const k of ['att', 'mid', 'def', 'gk']) {
+      const row = el.querySelector(`[data-k="${k}"]`);
+      requestAnimationFrame(() => { row.querySelector('i').style.width = clamp(r[k], 0, 99) + '%'; });
+      tweenNum(row.querySelector('.v'), r[k]);
+    }
   }
+  function tweenNum(node, to) {
+    const from = +node.dataset.v || 0;
+    node.dataset.v = to;
+    cancelAnimationFrame(node._raf);
+    if (from === to || REDUCE) { node.textContent = to; return; }
+    const t0 = performance.now(), dur = 500;
+    const f = (t) => {
+      const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      node.textContent = Math.round(from + (to - from) * e);
+      if (k < 1) node._raf = requestAnimationFrame(f);
+    };
+    node._raf = requestAnimationFrame(f);
+  }
+
+  function confetti(n = 160) {
+    if (REDUCE) return;
+    const c = document.createElement('canvas');
+    c.className = 'confetti';
+    document.body.appendChild(c);
+    const dpr = devicePixelRatio || 1, W = (c.width = innerWidth * dpr), H = (c.height = innerHeight * dpr);
+    const ctx = c.getContext('2d');
+    const cols = ['#5ee08a', '#f5c84c', '#6aa8ff', '#ff7a7a', '#d685ad', '#ffffff'];
+    const ps = Array.from({ length: n }, () => ({
+      x: W * (0.25 + Math.random() * 0.5), y: H * 0.4,
+      vx: (Math.random() - 0.5) * W * 0.022, vy: -(H * 0.008 + Math.random() * H * 0.024),
+      r: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.3,
+      s: (6 + Math.random() * 7) * dpr, c: cols[rand(cols.length)],
+    }));
+    const t0 = performance.now();
+    const f = (t) => {
+      ctx.clearRect(0, 0, W, H);
+      for (const p of ps) {
+        p.vy += H * 0.0009; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.r += p.vr;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c;
+        ctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); ctx.restore();
+      }
+      if (t - t0 < 3200) requestAnimationFrame(f); else c.remove();
+    };
+    requestAnimationFrame(f);
+  }
+  const buzz = (ms = 12) => { try { navigator.vibrate && navigator.vibrate(ms); } catch { /* ignore */ } };
+  const statLine = (p) => `HP ${p.s.hp} · Atk ${p.s.atk} · Def ${p.s.def} · SpA ${p.s.spa} · SpD ${p.s.spd} · Spe ${p.s.spe}`;
+  const cap = (s) => s[0].toUpperCase() + s.slice(1);
 
   // ================================================================
   // State
@@ -257,22 +319,35 @@
       d.dataset.slot = playersEl.children.length;
       playersEl.appendChild(d);
     }
+    let popN = 0;
     f.forEach(([pos, x, y], i) => {
       const el = playersEl.children[i];
       const id = sq.xi[i];
+      const prevId = el.dataset.id;
       el.style.left = x + '%';
       el.style.top = y + '%';
       el.style.setProperty('--pc', posColor(pos));
       el.className = 'player' + (id ? '' : ' empty') + (S.sprite === 'art' ? ' art' : '') + (pick && !id ? ' placeable' : '');
       const fit = pick && !id ? `${rating(pick, pos)} fit` : '';
       const key = `${id}|${pos}|${S.sprite}|${sq.showOvr}|${fit}`;
-      if (el.dataset.key !== key) { el.innerHTML = playerInner(id, pos, sq.showOvr, fit); el.dataset.key = key; }
+      if (el.dataset.key !== key) {
+        el.innerHTML = playerInner(id, pos, sq.showOvr, fit);
+        el.dataset.key = key;
+        // New face in this slot: pop it in (staggered when many change at once, e.g. Randomize).
+        if (id && prevId !== String(id) && !REDUCE) {
+          const delay = popN++ * 35 + 'ms';
+          el.querySelectorAll('.sprite, .plate').forEach((n) => { n.style.animationDelay = delay; n.classList.add('pop'); });
+        }
+      }
+      el.dataset.id = id || '';
     });
 
     // Bench
     benchEl.hidden = !sq.bench;
     $('.pitch-wrap').classList.toggle('has-bench', sq.bench);
-    if (sq.bench) {
+    const bkey = `${sq.subs.join('.')}|${S.sprite}|${sq.showOvr}`;
+    if (sq.bench && benchEl.dataset.key !== bkey) {
+      benchEl.dataset.key = bkey;
       benchEl.innerHTML = `<div class="bench-title">Substitutes</div><div class="bench-row">${sq.subs.map((id, i) =>
         `<div class="player${id ? '' : ' empty'}${S.sprite === 'art' ? ' art' : ''}" data-slot="${11 + i}" style="--pc:${LINES.SUB.color}">${playerInner(id, 'SUB', sq.showOvr)}</div>`).join('')}</div>`;
     }
@@ -298,7 +373,37 @@
     $$('#ovr-seg button').forEach((b) => b.classList.toggle('on', b.dataset.v === (B.ovr ? '1' : '0')));
     $$('#gen-grid button').forEach((b) => b.classList.toggle('on', +b.dataset.v === B.gen));
     $('#leg-toggle').checked = B.leg;
-    $('#team-ratings').innerHTML = ratingsHTML(teamRatings(B.f, B.xi));
+    updateRatings($('#team-ratings'), teamRatings(B.f, B.xi));
+    $('#btn-undo').disabled = !undoStack.length;
+    $('#btn-redo').disabled = !redoStack.length;
+  }
+
+  // ---------------- Undo / redo (builder lineup changes) ----------------
+  const undoStack = [], redoStack = [];
+  let lastSnap = null;
+  const snapB = () => JSON.stringify({ f: B.f, gen: B.gen, leg: B.leg, bench: B.bench, xi: B.xi, subs: B.subs });
+  function trackHistory() {
+    const s = snapB();
+    if (lastSnap && s !== lastSnap) {
+      undoStack.push(lastSnap);
+      if (undoStack.length > 60) undoStack.shift();
+      redoStack.length = 0;
+    }
+    lastSnap = s;
+  }
+  function undo() {
+    if (!undoStack.length) return;
+    redoStack.push(snapB());
+    Object.assign(B, JSON.parse(undoStack.pop()));
+    lastSnap = snapB();
+    render(); toast('Undone');
+  }
+  function redo() {
+    if (!redoStack.length) return;
+    undoStack.push(snapB());
+    Object.assign(B, JSON.parse(redoStack.pop()));
+    lastSnap = snapB();
+    render(); toast('Redone');
   }
 
   function renderSpriteSegs() {
@@ -311,7 +416,7 @@
     $$('.mode-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === S.view));
     document.title = S.view === 'challenge' ? '38–0 Challenge · Pokémon Starting XI' : 'Pokémon Starting XI';
     renderSpriteSegs();
-    if (S.view === 'builder') renderBuilderPanel(); else renderChallenge();
+    if (S.view === 'builder') { trackHistory(); renderBuilderPanel(); } else renderChallenge();
     renderPitch();
     saveAll();
   }
@@ -374,6 +479,14 @@
       try { await navigator.clipboard.writeText(url); toast('Link copied!'); } catch { prompt('Copy this link:', url); }
     });
     $('#btn-download').addEventListener('click', downloadImage);
+    $('#btn-undo').addEventListener('click', undo);
+    $('#btn-redo').addEventListener('click', redo);
+    document.addEventListener('keydown', (e) => {
+      if (S.view !== 'builder' || !$('#picker').hidden || !(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return;
+      if (e.target.closest && e.target.closest('input, textarea, select')) return;
+      e.preventDefault();
+      if (e.shiftKey) redo(); else undo();
+    });
   }
 
   // ---------------- Drag & drop / tap ----------------
@@ -440,11 +553,14 @@
     chip.style.setProperty('--pc', posColor(pos));
     $('#picker-title').textContent = `${LINES[lineOf(pos)].name}: pick a Pokémon`;
     $('#picker-search').value = '';
+    $('#picker-sort').value = S.sort || 'dex';
     $('#picker').hidden = false;
     renderPickerGrid();
+    const sel = $('#picker-grid .pk.sel');
+    if (sel) sel.scrollIntoView({ block: 'center' });
     if (matchMedia('(pointer: fine)').matches) $('#picker-search').focus();
   }
-  function closePicker() { $('#picker').hidden = true; pickerSlot = null; }
+  function closePicker() { $('#picker').hidden = true; pickerSlot = null; $('#picker-search').blur(); }
   function renderPickerGrid() {
     const pos = slotPos(pickerSlot);
     const q = $('#picker-search').value.trim().toLowerCase().replace(/^#/, '');
@@ -462,7 +578,7 @@
       const at = findSlot(p.id);
       const tag = at >= 0 ? `<span class="tag">${slotPos(at)}</span>` : '';
       const col = v >= 85 ? '#5ee08a' : v >= 70 ? '#f5c84c' : '#8b93a1';
-      return `<button class="pk${art}${p.id === cur ? ' sel' : ''}" data-id="${p.id}">
+      return `<button class="pk${art}${p.id === cur ? ' sel' : ''}" data-id="${p.id}" title="${statLine(p)}">
         <span class="fitv" style="color:${col}">${v}</span>${tag}
         ${imgTag(p.id, S.sprite)}
         <span class="no">#${String(p.id).padStart(3, '0')}</span><span class="n">${esc(p.name)}</span>${typeDots(p)}
@@ -470,7 +586,12 @@
     }).join('') || '<p class="muted">No Pokémon match that search.</p>';
   }
   $('#picker-search').addEventListener('input', renderPickerGrid);
-  $('#picker-sort').addEventListener('change', renderPickerGrid);
+  $('#picker-sort').addEventListener('change', () => { S.sort = $('#picker-sort').value; store.set('pxi.settings', S); renderPickerGrid(); });
+  $('#picker-search').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const first = $('#picker-grid .pk');
+    if (first) first.click();
+  });
   $('#picker-close').addEventListener('click', closePicker);
   $('#picker').addEventListener('click', (e) => { if (e.target.id === 'picker') closePicker(); });
   $('#picker-empty').addEventListener('click', () => { setSlot(pickerSlot, null); closePicker(); render(); });
@@ -640,8 +761,37 @@
     if (p.leg) C.legUsed++;
     C.round++;
     C.pick = null;
-    if (C.round >= 11) { C.phase = 'ready'; C.roll = null; } else rollRound();
+    buzz();
+    if (C.round >= 11) {
+      C.phase = 'ready'; C.roll = null; render();
+      confetti(70);
+    } else { rollRound(); startRoll(); }
+  }
+
+  // Slot-machine spin: cycle random regions/types, slowing down, then land on the real roll.
+  let rolling = false, rollTimer = null;
+  const rollChips = (gen, type, cls = '') =>
+    `<span class="chip region ${cls}">${REGION[gen]} · Gen ${gen}</span><span class="chip ${cls}" style="background:${TYPE_COLORS[type]}">${cap(type)}</span>`;
+  function startRoll() {
+    clearTimeout(rollTimer);
+    if (REDUCE) { rolling = false; render(); return; }
+    rolling = true;
     render();
+    const maxGen = C.pool === 'retro' ? 4 : 9, dur = 1100, t0 = performance.now();
+    const tick = () => {
+      const t = performance.now() - t0;
+      if (t >= dur || S.view !== 'challenge' || C.phase !== 'draft') {
+        rolling = false;
+        render();
+        const r = $('#ch-roll');
+        r.classList.remove('landed'); void r.offsetWidth; r.classList.add('landed');
+        buzz(20);
+        return;
+      }
+      $('#ch-roll').innerHTML = rollChips(1 + rand(maxGen), TYPES[rand(TYPES.length)], 'spin');
+      rollTimer = setTimeout(tick, 45 + Math.pow(t / dur, 2) * 190);
+    };
+    tick();
   }
 
   function renderChallenge() {
@@ -658,30 +808,43 @@
     if (C.phase === 'draft' && C.roll) {
       $('#ch-round').textContent = `Round ${C.round + 1} / 11`;
       $('#ch-leg').textContent = `Legendaries ${C.legUsed} / 3`;
-      $('#ch-roll').innerHTML = `<span class="chip region">${REGION[C.roll.gen]} · Gen ${C.roll.gen}</span>
-        <span class="chip" style="background:${TYPE_COLORS[C.roll.type]}">${C.roll.type[0].toUpperCase() + C.roll.type.slice(1)}</span>`;
       $('#ch-reroll').textContent = `🎲 Reroll (${C.rerolls})`;
-      $('#ch-reroll').disabled = C.rerolls <= 0;
+      $('#ch-reroll').disabled = C.rerolls <= 0 || rolling;
+      const opts = $('#ch-options');
+      opts.classList.toggle('veiled', rolling);
+      if (rolling) {
+        $('#ch-hint').textContent = 'Rolling…';
+        opts.innerHTML = ''; opts.dataset.key = '';
+        return;
+      }
+      $('#ch-roll').innerHTML = rollChips(C.roll.gen, C.roll.type);
       $('#ch-hint').textContent = C.pick
         ? `Now tap a glowing open spot to place ${BY_ID.get(C.pick).name}.`
         : 'Pick a Pokémon, then tap an open spot on the pitch.';
       const f = FORMATIONS[C.f];
       const open = f.map(([pos], i) => (C.xi[i] ? null : pos)).filter(Boolean);
       const art = S.sprite === 'art' ? ' art' : '';
-      $('#ch-options').innerHTML = C.roll.ids.map((id) => {
+      const okey = `${C.roll.ids.join('.')}|${open.join('.')}|${C.legUsed}|${S.sprite}`;
+      if (opts.dataset.key === okey) {
+        // Same roll: just move the selection highlight instead of rebuilding (no flicker).
+        $$('.pk', opts).forEach((b) => b.classList.toggle('sel', +b.dataset.id === C.pick));
+        return;
+      }
+      opts.dataset.key = okey;
+      opts.innerHTML = C.roll.ids.map((id, n) => {
         const p = BY_ID.get(id);
         let bp = open[0], bv = -1;
         for (const pos of open) { const v = rating(p, pos); if (v > bv) { bv = v; bp = pos; } }
         const locked = p.leg && C.legUsed >= 3;
         const col = bv >= 85 ? '#5ee08a' : bv >= 70 ? '#f5c84c' : '#8b93a1';
-        return `<button class="pk${art}${C.pick === id ? ' sel' : ''}" data-id="${id}" ${locked ? 'disabled title="Legendary limit reached"' : ''}>
+        return `<button class="pk deal${art}${C.pick === id ? ' sel' : ''}" data-id="${id}" style="--i:${Math.min(n, 24)}" title="${locked ? 'Legendary limit reached' : statLine(p)}" ${locked ? 'disabled' : ''}>
           <span class="fitv" style="color:${col}">${bv}</span><span class="tag" style="color:${posColor(bp)}">${bp}</span>
           ${imgTag(id, S.sprite)}<span class="n">${esc(p.name)}</span>${typeDots(p)}
           ${p.leg ? '<span class="leg" title="Legendary">★</span>' : ''}</button>`;
       }).join('');
     }
-    if (C.phase === 'ready') $('#ch-ratings').innerHTML = ratingsHTML(teamRatings(C.f, C.xi));
-    if (C.phase === 'result' && C.result) renderResult();
+    if (C.phase === 'ready') updateRatings($('#ch-ratings'), teamRatings(C.f, C.xi));
+    if (C.phase === 'result' && C.result && !seasonTimer) renderResult();
   }
 
   $('#ch-pool-seg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; C.pool = b.dataset.v; render(); });
@@ -689,13 +852,13 @@
   $('#ch-start').addEventListener('click', () => {
     const { pool, f } = C;
     C = newChallenge(); C.pool = pool; C.f = f; C.phase = 'draft';
-    rollRound(); render();
+    rollRound(); startRoll();
   });
   $('#ch-options').addEventListener('click', (e) => {
     const b = e.target.closest('.pk'); if (!b || b.disabled) return;
     C.pick = +b.dataset.id; render();
   });
-  $('#ch-reroll').addEventListener('click', () => { if (C.rerolls > 0) { C.rerolls--; rollRound(); render(); } });
+  $('#ch-reroll').addEventListener('click', () => { if (C.rerolls > 0 && !rolling) { C.rerolls--; rollRound(); startRoll(); } });
   $('#ch-quit').addEventListener('click', () => {
     if (!confirm('Abandon this run?')) return;
     const { pool, f } = C; C = newChallenge(); C.pool = pool; C.f = f; render();
@@ -705,10 +868,62 @@
     C.phase = 'result';
     const r = C.result.me;
     ST.runs++;
-    if (ST.best == null || r.pts > ST.best) { ST.best = r.pts; ST.bestRec = `${r.w}–${r.d}–${r.l}`; }
-    render();
+    const newBest = ST.best == null || r.pts > ST.best;
+    if (newBest) { ST.best = r.pts; ST.bestRec = `${r.w}–${r.d}–${r.l}`; }
+    playSeason(newBest);
   });
   $('#ch-again').addEventListener('click', () => { const { pool, f } = C; C = newChallenge(); C.pool = pool; C.f = f; render(); });
+
+  // Season playback: tick through matchdays with a live record, then reveal the full result.
+  let seasonTimer = null;
+  function playSeason(newBest) {
+    clearTimeout(seasonTimer);
+    seasonTimer = 1; // mark as running before render() so it doesn't draw the final result
+    C.phase = 'result';
+    render();
+    const { games } = C.result;
+    const box = $('#ch-result-box');
+    $('#ch-again').hidden = true;
+    box.innerHTML = `
+      <div class="round-row"><div class="box-title">Matchday <span id="lv-md">0</span> / 38</div><span class="streak" id="lv-streak"></span></div>
+      <div class="record" id="lv-rec">0–0–0</div>
+      <div class="sub" id="lv-pts">0 pts</div>
+      <div class="ticker" id="lv-tick"><span class="muted">Kick-off…</span></div>
+      <div class="form-strip">${games.map(() => '<i class="pending"></i>').join('')}</div>
+      <button class="btn" id="lv-skip">Skip to final table ⏭</button>`;
+    const cells = $$('.form-strip i', box);
+    let i = 0, w = 0, d = 0, l = 0;
+    const finish = () => {
+      clearTimeout(seasonTimer); seasonTimer = null;
+      renderResult();
+      $('#ch-again').hidden = false;
+      const me = C.result.me;
+      if (me.position === 1 || me.l === 0) confetti(me.w === 38 ? 320 : 180);
+      if (newBest) toast(`New best: ${me.pts} pts!`);
+      saveAll();
+    };
+    const step = () => {
+      if (S.view !== 'challenge') { finish(); return; }
+      const g = games[i];
+      if (g.res === 'W') w++; else if (g.res === 'D') d++; else l++;
+      cells[i].className = g.res + ' flip';
+      cells[i].textContent = g.res;
+      $('#lv-md', box).textContent = i + 1;
+      $('#lv-rec', box).textContent = `${w}–${d}–${l}`;
+      $('#lv-pts', box).textContent = `${w * 3 + d} pts`;
+      const t = $('#lv-tick', box);
+      t.innerHTML = `<span class="muted">MD${g.md}</span> ${g.home ? 'vs' : '@'} ${esc(g.opp)} <b class="${g.res}">${g.gf}–${g.ga}</b>`;
+      t.classList.remove('in'); void t.offsetWidth; t.classList.add('in');
+      $('#lv-streak', box).textContent = l === 0 && d === 0 ? '🔥 Perfect' : l === 0 ? '🛡️ Unbeaten' : '';
+      i++;
+      if (i >= games.length) { seasonTimer = setTimeout(finish, 500); return; }
+      // Slow down for the final stretch — maximum drama when a perfect run is alive.
+      const late = games.length - i <= 5;
+      seasonTimer = setTimeout(step, late ? (l === 0 ? 420 : 220) : 85);
+    };
+    $('#lv-skip', box).addEventListener('click', finish);
+    if (REDUCE) finish(); else seasonTimer = setTimeout(step, 400);
+  }
 
   // ---------------- Season simulation ----------------
   function poisson(l) { const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= Math.random(); } while (p > L); return k - 1; }
@@ -762,6 +977,7 @@
     if (me.w === 38) verdict = '🏆 PERFECT 38–0! Absolute legends.';
     else if (me.l === 0) verdict = '🛡️ Unbeaten — The Invincibles!';
     else if (me.position === 1) verdict = '🏆 League Champions!';
+    else if (me.position === 2) verdict = '🥈 Runners-up — so close!';
     else if (me.position <= 4) verdict = '⭐ Top-four finish';
     else if (me.position <= 17) verdict = 'Mid-table season';
     else verdict = '⬇️ Relegated…';

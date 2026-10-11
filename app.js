@@ -1869,9 +1869,10 @@
       ctx.fillStyle = '#f4f4f4'; ctx.fillText(str, W / 2, y);
     };
     text('Victory Road Champion! Congratulations!', top / 2 + 4, 50);
-    const vr = C.national.games.reduce((r, x) => { r[x.res]++; return r; }, { W: 0, D: 0, L: 0 });
-    const id = String(C.runId || Date.now()).slice(-5);
-    text(`YOUR XI  ID:${id}  ${REGION[C.home]}  VR ${vr.W}-${vr.D}-${vr.L}`, bot + (H - bot) / 2, 46);
+    // Footer: region · date won · formation. The date comes from the saved season so it never changes on reopen.
+    const saved = HIST.find((e) => e.id === C.runId);
+    const won = new Date(saved ? saved.date : Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).replace(',', '');
+    text(`${REGION[C.home]}  ·  ${won}  ·  ${C.f}`.toUpperCase(), bot + (H - bot) / 2, 46);
     return c;
   }
 

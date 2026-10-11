@@ -19,6 +19,7 @@
         <button class="mode-btn mode-builder" data-view="builder">⚽ XI Builder</button>
         <button class="mode-btn mode-records" data-view="records">📊 Records</button>
       </nav>
+      <button class="help-btn" id="help-open">❓ How to play</button>
 
       <!-- ============ BUILDER PANEL ============ -->
       <section id="builder-panel" class="panel">
@@ -182,6 +183,140 @@
       </div>
       <p class="muted small-text pad">Picking someone already in your squad swaps the two. You're the manager — use the base stats to decide who plays where.</p>
       <div class="picker-grid" id="picker-grid"></div>
+    </div>
+  </div>
+
+  <!-- Help -->
+  <div class="modal" id="help-modal" hidden>
+    <div class="modal-card help-card">
+      <div class="modal-head">
+        <h2>How to play</h2>
+        <button class="icon-btn" id="help-close" aria-label="Close">✕</button>
+      </div>
+      <div class="seg small help-tabs" id="help-tabs">
+        <button data-help="basics" class="on">Basics</button>
+        <button data-help="builder">Builder</button>
+        <button data-help="challenge">38–0</button>
+        <button data-help="regions">Regions</button>
+        <button data-help="matches">Matches</button>
+        <button data-help="records">Records</button>
+      </div>
+      <div class="help-body" id="help-body">
+
+        <section data-help="basics">
+          <p class="help-lead">Build a soccer team out of Pokémon. Pick who plays where, then see how they do over a full season.</p>
+          <h3>Modes</h3>
+          <div class="help-modes">
+            <div><b class="m-ch">▸ 38–0 Challenge</b><span>Draft a squad from random rolls, then try to win all 38 league games.</span></div>
+            <div><b class="m-rg">🌍 Region League</b><span>Draft mostly from your home region. Finish top 4 to reach the National League against the other regions.</span></div>
+            <div><b class="m-bu">⚽ XI Builder</b><span>Free play. Build any lineup you want and share it. No games are played.</span></div>
+            <div><b class="m-rc">📊 Records</b><span>Your trophies, all-time records, Pokémon career stats and every season you've finished.</span></div>
+          </div>
+          <h3>The pitch</h3>
+          <ul>
+            <li>Your team attacks <b>up</b> the pitch: keeper at the bottom, strikers at the top.</li>
+            <li>The label under each player is their position. Colours show the line: <b class="c-gk">GK</b> keeper, <b class="c-def">DEF</b> defence, <b class="c-mid">MID</b> midfield, <b class="c-fwd">FWD</b> attack.</li>
+            <li>Hover (or long-press) a player to see their base stats.</li>
+          </ul>
+          <h3>Base stats</h3>
+          <div class="help-stats">
+            <span><b>HP</b> Stamina and toughness</span><span><b>Atk</b> Physical power</span>
+            <span><b>Def</b> Physical defence</span><span><b>SpA</b> Special power</span>
+            <span><b>SpD</b> Special defence</span><span><b>Spe</b> Speed</span>
+          </div>
+          <p class="muted">Cards also show the <b>total</b> of all six stats in the top-left corner. Colours: <b style="color:#5ee08a">110+</b> elite, <b style="color:#f5c84c">80+</b> good, <b style="color:#c9ced6">55+</b> average.</p>
+        </section>
+
+        <section data-help="builder" hidden>
+          <p class="help-lead">A sandbox for building and sharing your dream lineup.</p>
+          <ul>
+            <li><b>Tap a player</b> to open the picker. Search by name, Dex number or type (e.g. "dragon"), and sort by any stat. Press <kbd>Enter</kbd> to take the first result.</li>
+            <li><b>Drag one player onto another</b> to swap them. Picking someone already in your squad also swaps them.</li>
+            <li><b>Formation</b> moves your players into a new shape. <b>Bench</b> adds 5 substitutes.</li>
+            <li><b>Generation</b> limits the pool to one region (or all of them). <b>Legendaries</b> lets them in.</li>
+            <li><b>★ Best XI</b> fills the pitch with a strong default lineup. <b>🔀 Random</b> rolls a random one.</li>
+            <li><b>Undo / Redo</b> (<kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd>) step through your changes.</li>
+            <li><b>⤓ Download image</b> saves a picture of your lineup. <b>🔗 Link</b> copies a link that opens this exact lineup.</li>
+          </ul>
+        </section>
+
+        <section data-help="challenge" hidden>
+          <p class="help-lead">Draft 11 Pokémon from random rolls, then play a 38-game league. Can you go 38–0?</p>
+          <h3>The draft</h3>
+          <ol>
+            <li>Pick your <b>Pokémon pool</b> (all generations or Gen 1–4) and a <b>formation</b>. They're locked for the whole run.</li>
+            <li>Each round rolls a <b>region</b> and a <b>type</b>. You can only pick Pokémon that match both.</li>
+            <li>Tap a Pokémon, then tap a <b>glowing open spot</b> on the pitch to place it. Placements are final.</li>
+            <li>You get <b>2 rerolls</b> per run and can use up to <b>3 Legendaries</b> (★).</li>
+          </ol>
+          <h3>The season</h3>
+          <ul>
+            <li>You play 19 clubs home and away. Each club has its own squad of Pokémon, from weak to very strong.</li>
+            <li>Watch it play out live or hit <b>Skip</b>. Win = 3 points, draw = 1.</li>
+            <li>Afterwards, check the <b>Squad</b>, <b>Team</b>, <b>Table</b>, <b>Awards</b> and <b>Games</b> tabs. Tap any club to see its squad and results.</li>
+            <li>Each of your players gets a <b>performance rating</b> for the season, based on what they actually did.</li>
+          </ul>
+          <p class="muted">A perfect 38–0 is extremely rare. Even an elite squad pulls it off only about 1 run in 70.</p>
+        </section>
+
+        <section data-help="regions" hidden>
+          <p class="help-lead">Represent your home region, win its league, then take on the best of the others.</p>
+          <ol>
+            <li>Choose a <b>home region</b> and formation.</li>
+            <li>Draft as in the 38–0 Challenge, but <b>75% of rolls</b> come from your home region (marked 🏠).</li>
+            <li>Play a 38-game league against clubs named after towns in your region.</li>
+            <li><b>Finish top 4</b> to qualify for the <b>🌍 National League</b>: 16 clubs from every region.</li>
+          </ol>
+          <h3>National League format</h3>
+          <ul>
+            <li><b>Group stage:</b> 4 groups of 4, home and away. The top 2 in each group go through.</li>
+            <li><b>Knockouts:</b> quarter-finals, semi-finals, then a final at a neutral ground. Level after 90 minutes means extra time, then penalties.</li>
+            <li>National clubs are stronger than most regional clubs, so expect a tougher fight.</li>
+          </ul>
+        </section>
+
+        <section data-help="matches" hidden>
+          <p class="help-lead">Matches are simulated from your players' stats and <b>where you put them</b>. Positioning is the whole game.</p>
+          <h3>What each position needs</h3>
+          <div class="help-pos">
+            <div><b class="c-gk">GK</b> HP and both defences. Bulky walls make great keepers.</div>
+            <div><b class="c-def">CB</b> Defence first, then HP and Sp. Def.</div>
+            <div><b class="c-def">LB · RB · WB</b> Defence <i>and</i> speed to cover the flanks.</div>
+            <div><b class="c-mid">CDM</b> A tough shield: defence, HP, Sp. Def.</div>
+            <div><b class="c-mid">CM</b> All-rounders. Balanced stats shine here.</div>
+            <div><b class="c-mid">LM · RM</b> Speed above everything.</div>
+            <div><b class="c-mid">CAM</b> Speed plus their best attacking stat.</div>
+            <div><b class="c-fwd">LW · RW</b> Very fast, with a strong attacking stat.</div>
+            <div><b class="c-fwd">ST</b> Raw attacking power (Atk <i>or</i> SpA), plus speed.</div>
+          </div>
+          <h3>How a match works</h3>
+          <ul>
+            <li>Your forwards and midfielders make up your <b>attack</b>. Your defenders, keeper and midfielders make up your <b>defence</b>.</li>
+            <li>Each game compares your attack with their defence (and the reverse), then rolls the score. Better teams win more, but upsets happen.</li>
+            <li>Home teams get a small edge. Empty slots badly hurt your team.</li>
+            <li>Goals usually go to forwards, and assists to midfielders. Players in positions that suit them score and assist more.</li>
+            <li>Types, team chemistry and the bench don't affect results.</li>
+          </ul>
+          <h3>Season ratings</h3>
+          <p>The coloured badge on each player after a season (<b style="color:#5ee08a">85+</b> / <b style="color:#f5c84c">75+</b> / <b style="color:#d6dbe3">65+</b> / <b style="color:#ef5b5b">below</b>) is earned from goals, assists, clean sheets, Man of the Match awards and how well the team did.</p>
+        </section>
+
+        <section data-help="records" hidden>
+          <p class="help-lead">Every season you finish is saved automatically.</p>
+          <ul>
+            <li><b>Trophy cabinet:</b> titles, Invincible seasons, perfect seasons and awards your players won.</li>
+            <li><b>All-time records:</b> your best team and player seasons.</li>
+            <li><b>Pokémon careers:</b> totals for every Pokémon that has played for you, across all runs.</li>
+            <li><b>All-Time XI:</b> the pitch shows your best performers by position.</li>
+            <li><b>Seasons:</b> tap any season for its awards, champions and squad stats.</li>
+          </ul>
+          <h3>Sharing &amp; backups</h3>
+          <ul>
+            <li><b>📤 Share result</b> (after a season) sends your result image and summary to friends.</li>
+            <li>History is saved <b>in this browser only</b>. Use <b>Export</b> to back it up and <b>Import</b> to restore it on another device.</li>
+          </ul>
+        </section>
+      </div>
     </div>
   </div>
 

@@ -1781,6 +1781,29 @@
   }
   $('#ch-share').addEventListener('click', shareResult);
 
+  // ---------------- Help ----------------
+  function openHelp(tab) {
+    if (tab) showHelpTab(tab);
+    $('#help-modal').hidden = false;
+    S.seenHelp = true;
+    store.set('pxi.settings', S);
+  }
+  function showHelpTab(tab) {
+    $$('#help-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.help === tab));
+    $$('#help-body section').forEach((sec) => { sec.hidden = sec.dataset.help !== tab; });
+    $('#help-body').scrollTop = 0;
+  }
+  const closeHelp = () => { $('#help-modal').hidden = true; };
+  // Open on the tab for whatever mode you're in.
+  $('#help-open').addEventListener('click', () => openHelp({ builder: 'builder', challenge: 'challenge', regions: 'regions', records: 'records' }[S.view] || 'basics'));
+  $('#help-close').addEventListener('click', closeHelp);
+  $('#help-modal').addEventListener('click', (e) => { if (e.target.id === 'help-modal') closeHelp(); });
+  $('#help-tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-help]'); if (b) showHelpTab(b.dataset.help); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('#help-modal').hidden) closeHelp();
+    else if (e.key === '?' && !e.target.closest('input, textarea, select') && $('#picker').hidden) openHelp();
+  });
+
   // ================================================================
   // Boot
   // ================================================================
@@ -1794,4 +1817,5 @@
 
   initControls();
   render();
+  if (!S.seenHelp && !fromHash) openHelp('basics'); // first visit
 })();

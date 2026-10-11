@@ -466,3 +466,34 @@ button.award:hover { border-color: #3a414d; }
 @keyframes hofIn { from { opacity: 0; transform: scale(1.12); } to { opacity: 1; transform: none; } }
 @keyframes hofFlash { from { opacity: .95; } to { opacity: 0; } }
 .hof-actions .btn { width: auto; }
+
+/* ---------- Daily & friend challenges ---------- */
+.daily-box { border-color: rgba(245,200,76,.35); background: linear-gradient(180deg, rgba(245,200,76,.07), transparent 70%), var(--panel); }
+.vs-banner { background: #2a2516; border: 1px solid rgba(245,200,76,.4); color: var(--text); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; }
+.vs-modal-card { width: min(520px, 100%); }
+.vs-modal-card .modal-head { padding-bottom: 0; }
+.vs-body { overflow-y: auto; padding: 0 18px 18px; display: flex; flex-direction: column; gap: 10px; }
+.vs-body h2 { margin: 0; font-size: 20px; }
+.vs-label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.vs-label input { background: #0f1216; border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 14px; }
+.vs-label input:focus { outline: none; border-color: var(--gold); }
+.vs-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.vs-actions .btn { width: 100%; }
+.vs-invite { display: grid; gap: 6px; }
+.vs-invite div { display: flex; justify-content: space-between; gap: 10px; background: var(--panel-2); border-radius: 8px; padding: 7px 10px; font-size: 13px; }
+.vs-card { background: var(--panel-2); border: 1px solid rgba(245,200,76,.35); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.vs-head { font-size: 14px; }
+.vs-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.vs-table th { font-size: 11px; color: var(--muted); font-weight: 700; text-align: center; padding: 3px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vs-table td { padding: 4px 3px; border-top: 1px solid #2a2f38; text-align: center; font-family: var(--mono); }
+.vs-table td:first-child { text-align: left; font-family: Inter, sans-serif; color: var(--muted); }
+.vs-verdict { text-align: center; font-weight: 800; font-size: 15px; padding: 4px 0; }
+.vs-verdict.win { color: var(--accent); }
+.vs-verdict.lose { color: var(--red); }
+.vs-h2h { font-size: 12.5px; display: flex; flex-direction: column; gap: 2px; }
+.vs-h2h b { font-family: var(--mono); }
+.vs-agg { font-weight: 600; margin-top: 2px; }
+.vs-squads summary { font-size: 12.5px; }
+.vs-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; font-size: 12px; }
+.vs-cols span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vs-cols i { font-style: normal; font-family: var(--mono); font-size: 10px; font-weight: 700; display: inline-block; width: 30px; }

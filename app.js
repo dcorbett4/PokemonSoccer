@@ -79,7 +79,30 @@
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const rand = (n) => Math.floor(Math.random() * n);
+  // Game randomness goes through RNG so a run can be replayed exactly from a seed (friend challenges,
+  // the Daily). Cosmetic randomness (confetti) keeps using Math.random directly.
+  let RNG = Math.random;
+  const rnd = () => RNG();
+  function hash32(str) {
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    return (Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)) >>> 0;
+  }
+  function mulberry32(a) {
+    return () => {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const rngFor = (...parts) => mulberry32(hash32(parts.join('|')));
+  function withRng(r, fn) { const prev = RNG; RNG = r || prev; try { return fn(); } finally { RNG = prev; } }
+  const newSeed = () => [...crypto.getRandomValues(new Uint32Array(2))].map((n) => n.toString(36)).join('').slice(0, 10);
+  const rand = (n) => Math.floor(rnd() * n);
   const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   const store = {
@@ -799,6 +822,7 @@
     return {
       mode, phase: 'setup', pool: 'all', home: 1, f: '4-3-3', xi: Array(11).fill(null),
       round: 0, roll: null, legUsed: 0, rerolls: 2, pick: null, result: null, national: null,
+      seed: null, rerollN: 0, daily: null, dailyKey: null, vs: null,
     };
   }
   const viewOf = (mode) => (mode === 'regions' ? 'regions' : 'challenge');
@@ -807,19 +831,46 @@
     C = Object.assign(newRun(mode), { pool, f, home });
     RUNS[viewOf(mode)] = C;
   }
+  // Start drafting a fresh run. Every new run is seeded so it can be shared as a challenge.
+  function beginRun(opts = {}) {
+    resetRun();
+    Object.assign(C, { seed: newSeed() }, opts, { phase: 'draft' });
+    rollRound(); startRoll();
+  }
 
   function otherGen(home) { let g; do { g = 1 + rand(9); } while (g === home); return g; }
 
   function rollRound() {
+    if (C.seed) { seededRoll(); return; }
     const taken = new Set(C.xi);
     for (let tries = 0; tries < 300; tries++) {
       const gen = C.mode === 'regions'
-        ? (Math.random() < HOME_ODDS ? C.home : otherGen(C.home))
+        ? (rnd() < HOME_ODDS ? C.home : otherGen(C.home))
         : 1 + rand(C.pool === 'retro' ? 4 : 9);
       const type = TYPES[rand(TYPES.length)];
       const opts = DEX.filter((p) => p.gen === gen && p.types.includes(type) && !taken.has(p.id));
       const usable = opts.filter((p) => !p.leg || C.legUsed < 3);
       if (usable.length >= 3) { C.roll = { gen, type, ids: opts.map((p) => p.id) }; C.pick = null; return; }
+    }
+  }
+
+  // Seeded rolls depend only on (seed, round, reroll #), never on what you've drafted, so two players
+  // on the same seed always see the same rolls. Already-drafted Pokémon just show as unavailable.
+  function seededRoll() {
+    const selectable = (ids) => ids.filter((id) => !C.xi.includes(id) && (!BY_ID.get(id).leg || C.legUsed < 3)).length;
+    for (let skip = 0; skip < 50; skip++) {
+      const r = rngFor(C.seed, 'roll', C.round, C.rerollN, skip);
+      for (let tries = 0; tries < 300; tries++) {
+        const gen = C.mode === 'regions'
+          ? (r() < HOME_ODDS ? C.home : (() => { let g; do { g = 1 + Math.floor(r() * 9); } while (g === C.home); return g; })())
+          : 1 + Math.floor(r() * (C.pool === 'retro' ? 4 : 9));
+        const type = TYPES[Math.floor(r() * TYPES.length)];
+        const ids = DEX.filter((p) => p.gen === gen && p.types.includes(type)).map((p) => p.id);
+        if (ids.length < 3) continue;
+        if (!selectable(ids)) break; // nothing you can take: deterministically skip to the next roll
+        C.roll = { gen, type, ids }; C.pick = null;
+        return;
+      }
     }
   }
 
@@ -829,6 +880,7 @@
     C.xi[slot] = C.pick;
     if (p.leg) C.legUsed++;
     C.round++;
+    C.rerollN = 0;
     C.pick = null;
     buzz();
     if (C.round >= 11) {
@@ -872,7 +924,7 @@
 
   function renderChallenge() {
     const R = C.mode === 'regions';
-    $('#ch-mode-title').textContent = R ? 'Region League' : '38–0 Challenge';
+    $('#ch-mode-title').textContent = R ? 'Region League' : C.daily ? `Daily Challenge #${C.daily}` : '38–0 Challenge';
     $('#ch-lede').textContent = R
       ? `Pick a home region — 75% of your draft rolls come from there. Fill all 11, play a 38-game regional league, and finish top 4 to reach Victory Road against the best clubs from every other region. Win your group to make the Final Four.`
       : 'Each round rolls a region and a type. Draft a matching Pokémon (up to 3 Legendaries) into any open spot, fill all 11, then play a 38-game league season. Can you go 38–0?';
@@ -900,6 +952,11 @@
     $('#ch-national').hidden = !canGoNational || !!seasonTimer;
     $('#ch-again').hidden = !!seasonTimer;
     $('#ch-hof').hidden = !!seasonTimer || !(C.national && C.national.finish === 'Champion');
+    $('#ch-challenge').hidden = !!seasonTimer || !(C.phase === 'result' || C.phase === 'national') || !C.seed;
+    $('#ch-challenge').textContent = C.vs ? '⚔️ Challenge someone else' : '⚔️ Challenge a friend';
+    renderDaily();
+    $('#ch-vs').hidden = !C.vs || C.phase === 'result' || C.phase === 'national';
+    if (C.vs) $('#ch-vs').innerHTML = `⚔️ Challenge from <b>${esc(C.vs.a.n)}</b>: beat ${resultLine(C.vs.a.r)}`;
     $('#ch-share').hidden = !!seasonTimer || !(C.phase === 'result' || C.phase === 'national') || !C.result;
     $('#ch-again').className = canGoNational ? 'btn wide' : 'btn btn-gold';
     $('#ch-again').textContent = canGoNational ? 'End run' : 'New run';
@@ -931,8 +988,9 @@
       opts.dataset.key = okey;
       opts.innerHTML = C.roll.ids.map((id, n) => {
         const p = BY_ID.get(id);
-        const locked = p.leg && C.legUsed >= 3;
-        return `<button class="pk deal${art}${C.pick === id ? ' sel' : ''}" data-id="${id}" style="--i:${Math.min(n, 24)}" title="${locked ? 'Legendary limit reached' : p.types.map(cap).join(' / ')}" ${locked ? 'disabled' : ''}>
+        const owned = C.xi.includes(id);
+        const locked = owned || (p.leg && C.legUsed >= 3);
+        return `<button class="pk deal${art}${C.pick === id ? ' sel' : ''}" data-id="${id}" style="--i:${Math.min(n, 24)}" title="${owned ? 'Already in your squad' : locked ? 'Legendary limit reached' : p.types.map(cap).join(' / ')}" ${locked ? 'disabled' : ''}>
           <span class="bst" title="Base stat total">${bst(p)}</span>
           ${imgTag(id, S.sprite)}<span class="n">${esc(p.name)}</span>${typeDots(p)}${statGrid(p)}
           ${p.leg ? '<span class="leg" title="Legendary">★</span>' : ''}</button>`;
@@ -945,15 +1003,12 @@
   $('#ch-home-grid').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; C.home = +b.dataset.v; render(); });
   $('#ch-pool-seg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; C.pool = b.dataset.v; render(); });
   $('#ch-formation-seg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; C.f = b.dataset.v; render(); });
-  $('#ch-start').addEventListener('click', () => {
-    resetRun(); C.phase = 'draft';
-    rollRound(); startRoll();
-  });
+  $('#ch-start').addEventListener('click', () => beginRun());
   $('#ch-options').addEventListener('click', (e) => {
     const b = e.target.closest('.pk'); if (!b || b.disabled) return;
     C.pick = +b.dataset.id; render();
   });
-  $('#ch-reroll').addEventListener('click', () => { if (C.rerolls > 0 && !rolling) { C.rerolls--; rollRound(); startRoll(); } });
+  $('#ch-reroll').addEventListener('click', () => { if (C.rerolls > 0 && !rolling) { C.rerolls--; C.rerollN++; rollRound(); startRoll(); } });
   $('#ch-quit').addEventListener('click', () => {
     if (!confirm('Abandon this run?')) return;
     resetRun(); render();
@@ -971,10 +1026,13 @@
 
   $('#ch-play').addEventListener('click', () => {
     const R = C.mode === 'regions';
-    const names = R ? clubsFor(C.home, 19) : shuffle(CLUBS.slice());
     const meClub = { name: 'Your XI', me: true, region: R ? C.home : null, f: C.f, xi: C.xi.slice() };
-    const ai = makeClubs(names.map((name, i) => ({ name, region: R ? C.home : null, tier: i / (names.length - 1) })), countUses([meClub]));
-    C.result = simulateLeague([meClub, ...ai]);
+    // Seeded runs build identical AI clubs for everyone on that seed (so they ignore your picks).
+    const ai = withRng(C.seed && rngFor(C.seed, 'clubs'), () => {
+      const names = R ? clubsFor(C.home, 19) : shuffle(CLUBS.slice());
+      return makeClubs(names.map((name, i) => ({ name, region: R ? C.home : null, tier: i / (names.length - 1) })), C.seed ? new Map() : countUses([meClub]));
+    });
+    C.result = simulateLeague([meClub, ...ai], C.seed);
     C.national = null;
     if (!C.runId) C.runId = Date.now();
     C.phase = 'result';
@@ -1000,6 +1058,7 @@
         else if (R && me.position <= 4) confetti(90);
         if (R && me.position <= 4) toast('Top 4 — you qualified for Victory Road!');
         else if (!R && newBest) toast(`New best: ${me.pts} pts!`);
+        if (C.daily && C.dailyKey) saveDaily();
         recordSeason();
       },
     });
@@ -1008,7 +1067,7 @@
   $('#ch-national').addEventListener('click', () => {
     // Victory Road clubs avoid (but don't ban) anyone already used in this run's league.
     const leagueClubs = C.result.clubs || [{ name: 'Your XI', me: true, region: C.home, f: C.f, xi: C.xi.slice() }];
-    C.national = simulateNational(leagueClubs[0], countUses(leagueClubs));
+    C.national = simulateNational(leagueClubs[0], countUses(C.seed ? leagueClubs.slice(1) : leagueClubs), C.seed);
     C.phase = 'national';
     resultComp = 'national';
     if (C.national.finish === 'Champion') SR.titles++;
@@ -1079,7 +1138,7 @@
   }
 
   // ---------------- Match simulation ----------------
-  function poisson(l) { const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= Math.random(); } while (p > L); return k - 1; }
+  function poisson(l) { const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= rnd(); } while (p > L); return k - 1; }
 
   function playMatch(H, A, homeAdv = true) {
     const lh = Math.min(5, (homeAdv ? 1.45 : 1.3) * Math.exp((H.attack - A.defense) / 20));
@@ -1105,13 +1164,13 @@
     });
     const pick = (key, excl) => {
       const tot = ps.reduce((t, x) => t + (x.i === excl ? 0 : x[key]), 0);
-      let r = Math.random() * tot;
+      let r = rnd() * tot;
       for (const x of ps) { if (x.i === excl) continue; r -= x[key]; if (r <= 0) return x.i; }
       return ps[ps.length - 1].i;
     };
     return Array.from({ length: n }, () => lo + rand(hi - lo + 1)).sort((a, b) => a - b).map((m) => {
       const sc = pick('sc');
-      return { s: sc, a: Math.random() < 0.78 ? pick('as', sc) : null, m };
+      return { s: sc, a: rnd() < 0.78 ? pick('as', sc) : null, m };
     });
   }
 
@@ -1126,11 +1185,11 @@
     for (let slot = 0; slot < 11; slot++) {
       for (const c of shuffle(clubs.slice())) {
         const pos = FORMATIONS[c.f][slot][0];
-        const target = 60 + c.tier * 28 + (Math.random() * 8 - 4);
+        const target = 60 + c.tier * 28 + (rnd() * 8 - 4);
         let best = null, bd = Infinity;
         for (const p of AI_POOL) {
           if (c.xi.includes(p.id)) continue;
-          const d = Math.abs(rating(p, pos) - target) + Math.random() * 3
+          const d = Math.abs(rating(p, pos) - target) + rnd() * 3
             + REPEAT_PENALTY * (uses.get(p.id) || 0) + (c.region && p.gen !== c.region ? AWAY_PENALTY : 0);
           if (d < bd) { bd = d; best = p; }
         }
@@ -1159,7 +1218,7 @@
     });
   }
 
-  function simulateLeague(clubs) {
+  function simulateLeague(clubs, seed) {
     const str = clubs.map(strengthOf), rec = clubs.map(blankRec);
     // Double round-robin via the circle method.
     const n = clubs.length, idx = clubs.map((_, i) => i), rounds = [];
@@ -1173,11 +1232,12 @@
       idx.splice(1, 0, idx.pop());
     }
     const matches = [];
-    rounds.concat(rounds.map((g) => g.map(([a, b]) => [b, a]))).forEach((games, ri) => games.forEach(([h, a]) => {
+    // Each match gets its own seeded dice, so the same fixture plays out comparably for everyone on a seed.
+    rounds.concat(rounds.map((g) => g.map(([a, b]) => [b, a]))).forEach((games, ri) => games.forEach(([h, a]) => withRng(seed && rngFor(seed, 'lg', ri, h, a), () => {
       const { gh, ga } = playMatch(str[h], str[a]);
       tally(rec[h], gh, ga); tally(rec[a], ga, gh);
       matches.push({ md: ri + 1, h, a, gh, ga, eh: goalEvents(gh, clubs[h].f, clubs[h].xi), ea: goalEvents(ga, clubs[a].f, clubs[a].xi) });
-    }));
+    })));
     const table = rec.map((r, ci) => Object.assign({ ci, name: clubs[ci].name, me: ci === 0 }, r)).sort(sortTable);
     const me = table.find((t) => t.me);
     me.position = table.indexOf(me) + 1;
@@ -1188,12 +1248,15 @@
 
   // Victory Road: 16 clubs (you + the best of the other regions) in 4 groups of 4. Group winners make the
   // Final Four: semi-finals, then a neutral-ground final.
-  function simulateNational(meClub, uses) {
-    const specs = [];
-    for (let g = 1; g <= 9; g++) {
-      if (g !== meClub.region) clubsFor(g, 2).forEach((name) => specs.push({ name, region: g, tier: 0.6 + Math.random() * 0.4 }));
-    }
-    const clubs = [meClub, ...makeClubs(shuffle(specs).slice(0, 15), uses)];
+  function simulateNational(meClub, uses, seed) {
+    const R = (...k) => seed && rngFor(seed, 'vr', ...k);
+    const clubs = [meClub, ...withRng(R('clubs'), () => {
+      const specs = [];
+      for (let g = 1; g <= 9; g++) {
+        if (g !== meClub.region) clubsFor(g, 2).forEach((name) => specs.push({ name, region: g, tier: 0.6 + rnd() * 0.4 }));
+      }
+      return makeClubs(shuffle(specs).slice(0, 15), uses);
+    })];
     const str = clubs.map(strengthOf), rec = clubs.map(blankRec);
     const groups = [0, 1, 2, 3].map((gi) => [0, 1, 2, 3].map((k) => gi * 4 + k));
     const matches = [];
@@ -1201,16 +1264,16 @@
 
     // Group stage: double round-robin inside each group.
     const sched = [[[0, 1], [2, 3]], [[2, 0], [1, 3]], [[0, 3], [1, 2]]];
-    sched.concat(sched.map((r) => r.map(([a, b]) => [b, a]))).forEach((round, ri) => groups.forEach((gr) => round.forEach(([x, y]) => {
+    sched.concat(sched.map((r) => r.map(([a, b]) => [b, a]))).forEach((round, ri) => groups.forEach((gr) => round.forEach(([x, y]) => withRng(R('g', ri, gr[x], gr[y]), () => {
       const h = gr[x], a = gr[y];
       const { gh, ga } = playMatch(str[h], str[a]);
       tally(rec[h], gh, ga); tally(rec[a], ga, gh);
       matches.push({ md: ri + 1, stage: `Victory Road · MD${ri + 1}`, short: `G${ri + 1}`, h, a, gh, ga, eh: goals(h, gh), ea: goals(a, ga) });
-    })));
-    const tables = groups.map((gr) => gr.slice().sort((x, y) => sortTable(rec[x], rec[y]) || Math.random() - 0.5));
+    }))));
+    const tables = withRng(R('ties'), () => groups.map((gr) => gr.slice().sort((x, y) => sortTable(rec[x], rec[y]) || rnd() - 0.5)));
 
     // Knockouts: single match, extra time, then penalties.
-    const playKO = (h, a, stage, short, neutral) => {
+    const playKO = (h, a, stage, short, neutral) => withRng(R('ko', stage, h, a), () => {
       const m = playMatch(str[h], str[a], !neutral);
       let gh = m.gh, ga = m.ga, et = false, pens = null, etH = 0, etA = 0;
       if (gh === ga) {
@@ -1218,7 +1281,7 @@
         if (gh === ga) {
           const pH = clamp(0.5 + ((str[h].attack + str[h].defense) - (str[a].attack + str[a].defense)) / 200, 0.35, 0.65);
           const win = 3 + rand(3), lose = Math.max(0, win - 1 - rand(2));
-          pens = Math.random() < pH ? [win, lose] : [lose, win];
+          pens = rnd() < pH ? [win, lose] : [lose, win];
         }
       }
       const winner = pens ? (pens[0] > pens[1] ? h : a) : (gh > ga ? h : a);
@@ -1227,9 +1290,9 @@
         eh: goals(h, m.gh).concat(goals(h, etH, 91, 120)), ea: goals(a, m.ga).concat(goals(a, etA, 91, 120)),
       });
       return winner;
-    };
+    });
     const [A, B, Cg, D] = tables;
-    const sf = [[A[0], B[0]], [Cg[0], D[0]]].map((pair) => { const [h, a] = shuffle(pair.slice()); return playKO(h, a, 'Semi-final', 'SF'); });
+    const sf = [[A[0], B[0]], [Cg[0], D[0]]].map((pair, i) => { const [h, a] = withRng(R('sf', i), () => shuffle(pair.slice())); return playKO(h, a, 'Semi-final', 'SF'); });
     const champ = playKO(sf[0], sf[1], 'Final', 'F', true);
 
     let finish = 'Group stage';
@@ -1410,7 +1473,8 @@
     const compSwitch = R && C.national
       ? `<div class="seg comp-switch"><button data-comp="league" class="${showNat ? '' : 'on'}">🏠 ${REGION[C.home]} League</button><button data-comp="national" class="${showNat ? 'on' : ''}">⛰️ Victory Road</button></div>`
       : '';
-    $('#ch-result-box').innerHTML = compSwitch + (showNat ? nationalHTML() : leagueHTML());
+    const vs = C.vs && C.result ? vsCard(C.vs, mySide(), true) + '<button class="btn btn-gold wide" data-act="reply">📤 Send your result back</button>' : '';
+    $('#ch-result-box').innerHTML = vs + compSwitch + (showNat ? nationalHTML() : leagueHTML());
   }
 
   function leagueHTML() {
@@ -1517,6 +1581,7 @@
   }
 
   $('#ch-result-box').addEventListener('click', (e) => {
+    if (e.target.closest('[data-act="reply"]')) { sendReply(); return; }
     const k = e.target.closest('[data-club]');
     if (k) { openClub(k.dataset.src, +k.dataset.club); return; }
     const t = e.target.closest('[data-tab]');
@@ -1589,6 +1654,8 @@
       nat: N ? Object.assign({ finish: N.finish, champion: N.clubs[N.champion].name }, natRec) : null,
       squad: FORMATIONS[C.f].map(([pos], i) => Object.assign({ id: C.xi[i], pos, rtg: pr[i] }, st[i])),
       awards: awd(res), natAwards: N ? awd(N) : null,
+      daily: C.daily || null,
+      vs: C.vs ? { n: C.vs.a.n, res: compareRes(runSummary(), C.vs.a.r) } : null,
     };
     HIST = HIST.filter((e) => e.id !== entry.id);
     HIST.unshift(entry);
@@ -1596,7 +1663,7 @@
     saveHist();
   }
 
-  const modeLabel = (e) => (e.mode === 'regions' ? `${REGION[e.home]} League` : '38–0 Challenge');
+  const modeLabel = (e) => (e.mode === 'regions' ? `${REGION[e.home]} League` : e.daily ? `Daily #${e.daily}` : '38–0 Challenge');
   const dateLabel = (t) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
   // Career totals for every Pokémon that has played for you.
@@ -1678,7 +1745,8 @@
     const awardLine = (icon, lbl, a, suffix) => (a ? `<div class="kv wide${a.me ? ' mine' : ''}"><span>${icon} ${lbl}</span><b>${pkName(a.id)} <small>${esc(a.club)} · ${a.v}${suffix}</small></b></div>` : '');
     const seasons = HIST.map((e) => {
       const L = e.league;
-      const natTxt = e.nat ? ` · ⛰️ ${NAT_LABEL[e.nat.finish]}` : '';
+      const natTxt = (e.nat ? ` · ⛰️ ${NAT_LABEL[e.nat.finish]}` : '')
+        + (e.vs ? ` · ⚔️ ${e.vs.res > 0 ? 'beat' : e.vs.res < 0 ? 'lost to' : 'tied'} ${esc(e.vs.n)}` : '');
       const trophy = L.pos === 1 ? '🏆 ' : '';
       return `<details class="season"><summary><span class="s-main">${trophy}${modeLabel(e)} <span class="muted">· ${e.f}</span></span>
           <span class="s-rec">${L.w}–${L.d}–${L.l} · ${ord(L.pos)}${natTxt}</span><span class="s-date muted">${dateLabel(e.date)}</span></summary>
@@ -1746,6 +1814,7 @@
 
   // ---------------- Share ----------------
   function shareText() {
+    if (C.daily) return dailyShareText();
     const me = C.result.me, R = C.mode === 'regions';
     let s = `⚽ My Pokémon Starting XI went ${me.w}–${me.d}–${me.l} (${me.pts} pts, ${ord(me.position)}) in ${R ? `the ${REGION[C.home]} League` : 'the 38–0 Challenge'}`;
     if (C.national) s += C.national.finish === 'Champion' ? ' and conquered Victory Road 🏆' : `, then reached Victory Road (${NAT_LABEL[C.national.finish]})`;
@@ -1892,6 +1961,258 @@
   $('#hof-share').addEventListener('click', shareResult);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#hof').hidden) $('#hof').hidden = true; });
 
+  // ---------------- Daily Challenge ----------------
+  const DAILY_EPOCH = Date.UTC(2026, 9, 11); // Daily #1
+  const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  function dailyInfo(d = new Date()) {
+    const key = dayKey(d);
+    const no = Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - DAILY_EPOCH) / 864e5) + 1;
+    const seed = `daily-${key}`;
+    const f = FKEYS[Math.floor(rngFor(seed, 'formation')() * FKEYS.length)];
+    return { key, no, seed, f };
+  }
+  let DAILY = store.get('pxi.daily', {});
+  const saveDailyStore = () => {
+    const keys = Object.keys(DAILY).sort();
+    keys.slice(0, Math.max(0, keys.length - 60)).forEach((k) => delete DAILY[k]);
+    store.set('pxi.daily', DAILY);
+  };
+  const resultLine = (r) => `${r.w}–${r.d}–${r.l} · ${r.pts} pts · ${ord(r.pos)}${r.vr ? ` · ⛰️ ${NAT_LABEL[r.vr].replace('🏆 ', '')}` : ''}`;
+
+  function dailyShareText() {
+    const me = C.result.me, g = C.result.games;
+    const rows = [];
+    for (let i = 0; i < g.length; i += 10) rows.push(g.slice(i, i + 10).map((x) => ({ W: '🟩', D: '🟨', L: '🟥' })[x.res]).join(''));
+    const st = hasGoalData(C.result) ? seasonPlayerStats(g) : null;
+    const top = st ? st.reduce((b, x, i) => (x.g > st[b].g ? i : b), 0) : -1;
+    return [
+      `Pokémon Starting XI · Daily #${C.daily} (${C.f})`,
+      `⚽ ${me.w}–${me.d}–${me.l} · ${me.pts} pts · ${ord(me.position)}${me.position === 1 ? ' 🏆' : ''}`,
+      ...rows,
+      top >= 0 && st[top].g ? `👟 ${slotName(top)} ${st[top].g}` : '',
+    ].filter(Boolean).join('\n');
+  }
+  function saveDaily() {
+    DAILY[C.dailyKey] = { no: C.daily, started: true, done: { line: resultLine(runSummary()), text: dailyShareText() } };
+    saveDailyStore();
+  }
+
+  function renderDaily() {
+    const box = $('#daily-box');
+    box.hidden = C.mode !== 'classic' || C.phase !== 'setup';
+    if (box.hidden) return;
+    const d = dailyInfo(), entry = DAILY[d.key];
+    const mins = Math.ceil((new Date(new Date().setHours(24, 0, 0, 0)) - new Date()) / 60000);
+    $('#daily-title').textContent = `📅 Daily Challenge #${d.no}`;
+    $('#daily-next').textContent = `Next in ${Math.floor(mins / 60)}h ${mins % 60}m`;
+    if (entry && entry.done) {
+      $('#daily-desc').innerHTML = `Today's result: <b>${esc(entry.done.line)}</b>`;
+    } else if (entry && entry.started) {
+      $('#daily-desc').textContent = "You've used today's attempt. Come back tomorrow!";
+    } else {
+      $('#daily-desc').innerHTML = `Same rolls for everyone today. Formation: <b>${d.f}</b>. One attempt, so make it count.`;
+    }
+    $('#daily-play').hidden = !!entry;
+    $('#daily-share').hidden = !(entry && entry.done);
+  }
+  $('#daily-play').addEventListener('click', () => {
+    const d = dailyInfo();
+    if (DAILY[d.key]) return;
+    DAILY[d.key] = { no: d.no, started: true };
+    saveDailyStore();
+    beginRun({ seed: d.seed, f: d.f, pool: 'all', daily: d.no, dailyKey: d.key });
+  });
+  $('#daily-share').addEventListener('click', async () => {
+    const entry = DAILY[dailyInfo().key];
+    if (!entry || !entry.done) return;
+    await shareOrCopy({ title: 'Pokémon Starting XI', text: `${entry.done.text}\n${location.origin + location.pathname}` });
+  });
+
+  // Native share sheet when available, clipboard otherwise.
+  async function shareOrCopy(data) {
+    try {
+      if (navigator.share) { await navigator.share(data); return true; }
+    } catch (err) {
+      if (err && err.name === 'AbortError') return false;
+    }
+    try { await navigator.clipboard.writeText(data.url ? `${data.text} ${data.url}` : data.text); toast('Copied to clipboard'); return true; } catch {
+      prompt('Copy this:', data.url ? `${data.text} ${data.url}` : data.text);
+      return true;
+    }
+  }
+
+  // ---------------- Friend challenges ----------------
+  // A challenge link carries the seed, setup and the sender's squad + result. The friend drafts from the
+  // same seeded rolls and plays the same seeded league; a reply link carries both sides back.
+  const runSummary = () => {
+    const m = C.result.me;
+    return { w: m.w, d: m.d, l: m.l, pts: m.pts, pos: m.position, gf: m.gf, ga: m.ga, vr: C.national ? C.national.finish : null };
+  };
+  const myName = () => (S.name || '').trim() || 'A friend';
+  const mySide = () => ({ n: myName(), x: C.xi.slice(), r: runSummary() });
+  const challengeBase = () => ({ v: 1, m: C.mode, s: C.seed, f: C.f, h: C.home, p: C.pool, d: C.daily || null });
+
+  const b64e = (o) => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const b64d = (str) => JSON.parse(decodeURIComponent(escape(atob(str.replace(/-/g, '+').replace(/_/g, '/')))));
+  const challengeUrl = (o) => `${location.origin}${location.pathname}#c=${b64e(o)}`;
+
+  // Everything from a link is untrusted: rebuild it field by field.
+  function cleanSide(x) {
+    if (!x || !Array.isArray(x.x) || x.x.length !== 11 || !x.x.every((id) => BY_ID.has(+id))) return null;
+    const r = x.r || {};
+    const num = (v) => (Number.isFinite(+v) ? clamp(Math.round(+v), 0, 999) : 0);
+    return {
+      n: String(x.n || 'A friend').replace(/[\u0000-\u001f]/g, '').slice(0, 16) || 'A friend',
+      x: x.x.map(Number),
+      r: { w: num(r.w), d: num(r.d), l: num(r.l), pts: num(r.pts), pos: num(r.pos), gf: num(r.gf), ga: num(r.ga), vr: NAT_STAGES.includes(r.vr) ? r.vr : null },
+    };
+  }
+  function parseChallenge(str) {
+    try {
+      const o = b64d(str);
+      if (!o || o.v !== 1 || typeof o.s !== 'string' || o.s.length > 40 || !FORMATIONS[o.f]) return null;
+      const a = cleanSide(o.a);
+      if (!a) return null;
+      return {
+        v: 1, m: o.m === 'regions' ? 'regions' : 'classic', s: o.s, f: o.f, h: clamp(Math.round(+o.h) || 1, 1, 9),
+        p: o.p === 'retro' ? 'retro' : 'all', d: Number.isFinite(+o.d) && +o.d > 0 ? Math.round(+o.d) : null,
+        a, b: o.b ? cleanSide(o.b) : null,
+      };
+    } catch { return null; }
+  }
+
+  const VR_RANK = { 'Group stage': 1, 'Quarter-final': 2, 'Semi-final': 3, 'Runner-up': 4, Champion: 5 };
+  function compareRes(a, b) {
+    const k = (r) => [VR_RANK[r.vr] || 0, r.pts, r.gf - r.ga, r.gf];
+    const x = k(a), y = k(b);
+    for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] > y[i] ? 1 : -1;
+    return 0;
+  }
+
+  // Two-leg derby between the challenger (A) and the responder (B). Seeded, so both see the same result.
+  function headToHead(ch, xiA, xiB) {
+    const A = { f: ch.f, xi: xiA }, B = { f: ch.f, xi: xiB };
+    const sa = strengthOf(A), sb = strengthOf(B);
+    const leg = (H, Aw, sh, saw, k) => withRng(rngFor(ch.s, 'h2h', k), () => {
+      const m = playMatch(sh, saw);
+      return { gh: m.gh, ga: m.ga, eh: goalEvents(m.gh, H.f, H.xi), ea: goalEvents(m.ga, Aw.f, Aw.xi) };
+    });
+    const l1 = leg(A, B, sa, sb, 1), l2 = leg(B, A, sb, sa, 2);
+    const aggA = l1.gh + l2.ga, aggB = l1.ga + l2.gh;
+    let pens = null, winner = aggA > aggB ? 'A' : aggB > aggA ? 'B' : null;
+    if (!winner) {
+      const r = rngFor(ch.s, 'h2h', 'pens');
+      const pA = clamp(0.5 + ((sa.attack + sa.defense) - (sb.attack + sb.defense)) / 200, 0.35, 0.65);
+      const win = 3 + Math.floor(r() * 3), lose = Math.max(0, win - 1 - Math.floor(r() * 2));
+      winner = r() < pA ? 'A' : 'B';
+      pens = winner === 'A' ? [win, lose] : [lose, win];
+    }
+    return { l1, l2, aggA, aggB, pens, winner };
+  }
+
+  // Side-by-side card. `meIsB` = the viewer is the responder (the friend who accepted).
+  function vsCard(ch, other, meIsB) {
+    const me = meIsB ? other : ch.a, them = meIsB ? ch.a : other;
+    const h = headToHead(ch, ch.a.x, other.x);
+    const cmp = compareRes(me.r, them.r);
+    const nm = esc(them.n);
+    const vrRow = ch.m === 'regions' ? `<tr><td>Victory Road</td><td>${me.r.vr ? NAT_LABEL[me.r.vr] : '—'}</td><td>${them.r.vr ? NAT_LABEL[them.r.vr] : '—'}</td></tr>` : '';
+    const verdict = cmp > 0 ? '🏆 You win the challenge!' : cmp < 0 ? `😬 ${nm} wins the challenge` : '🤝 Dead heat!';
+    const youA = !meIsB;
+    const name = (isA) => (isA === youA ? 'You' : nm);
+    const leg = (l, homeIsA) => `${name(homeIsA)} <b>${l.gh}–${l.ga}</b> ${name(!homeIsA)}`;
+    const meAgg = youA ? h.aggA : h.aggB, themAgg = youA ? h.aggB : h.aggA;
+    const derbyWin = (h.winner === 'A') === youA;
+    const pensTxt = h.pens ? ` · pens ${youA ? h.pens[0] : h.pens[1]}–${youA ? h.pens[1] : h.pens[0]}` : '';
+    const squad = (x) => FORMATIONS[ch.f].map(([pos], i) => `<span><i style="color:${posColor(pos)}">${pos}</i>${pkName(x[i])}</span>`).join('');
+    return `<div class="vs-card">
+      <div class="vs-head">⚔️ Challenge vs <b>${nm}</b>${ch.d ? ` <span class="muted">· Daily #${ch.d}</span>` : ''}</div>
+      <table class="vs-table">
+        <tr><th></th><th>You</th><th>${nm}</th></tr>
+        <tr><td>Record</td><td>${me.r.w}–${me.r.d}–${me.r.l}</td><td>${them.r.w}–${them.r.d}–${them.r.l}</td></tr>
+        <tr><td>Points</td><td><b>${me.r.pts}</b></td><td><b>${them.r.pts}</b></td></tr>
+        <tr><td>Finish</td><td>${ord(me.r.pos)}</td><td>${ord(them.r.pos)}</td></tr>
+        <tr><td>Goal diff</td><td>${sgn(me.r.gf - me.r.ga)}</td><td>${sgn(them.r.gf - them.r.ga)}</td></tr>
+        ${vrRow}
+      </table>
+      <div class="vs-verdict ${cmp > 0 ? 'win' : cmp < 0 ? 'lose' : ''}">${verdict}</div>
+      <div class="vs-h2h"><div class="group-title">Head-to-head derby</div>
+        <div>Leg 1: ${leg(h.l1, true)}</div><div>Leg 2: ${leg(h.l2, false)}</div>
+        <div class="vs-agg">Aggregate: You ${meAgg}–${themAgg} ${nm}${pensTxt} · ${derbyWin ? '✅ You win the derby' : `❌ ${nm} wins the derby`}</div>
+      </div>
+      <details class="vs-squads"><summary>Compare squads</summary>
+        <div class="vs-cols"><div><div class="group-title">You</div>${squad(me.x)}</div><div><div class="group-title">${nm}</div>${squad(them.x)}</div></div>
+      </details>
+    </div>`;
+  }
+
+  function openVs(html) { $('#vs-body').innerHTML = html; $('#vs-modal').hidden = false; }
+  const closeVs = () => { $('#vs-modal').hidden = true; };
+  $('#vs-close').addEventListener('click', closeVs);
+  $('#vs-modal').addEventListener('click', (e) => { if (e.target.id === 'vs-modal') closeVs(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#vs-modal').hidden) closeVs(); });
+
+  // Sender: build a challenge from the finished run.
+  $('#ch-challenge').addEventListener('click', () => {
+    openVs(`<h2>⚔️ Challenge a friend</h2>
+      <p class="muted small-text">They'll draft from <b>your exact rolls</b> with the same formation${C.mode === 'regions' ? ' and home region' : ''}, then play <b>the same league</b>. Your squad stays hidden until they finish. Then you'll compare results and play a two-leg derby.</p>
+      <label class="vs-label">Your name <input id="vs-name" maxlength="16" placeholder="e.g. Dylan" value="${esc(S.name || '')}" /></label>
+      <div class="vs-actions"><button id="vs-send" class="btn btn-gold">📤 Share challenge</button><button id="vs-copy" class="btn">🔗 Copy link</button></div>`);
+    const link = () => {
+      S.name = $('#vs-name').value.trim().slice(0, 16);
+      store.set('pxi.settings', S);
+      return challengeUrl(Object.assign(challengeBase(), { a: mySide() }));
+    };
+    const blurb = () => `⚔️ ${myName()} challenges you on Pokémon Starting XI: beat ${resultLine(runSummary())} with the same draft!`;
+    $('#vs-send').addEventListener('click', async () => { const url = link(); if (await shareOrCopy({ title: 'Pokémon Starting XI challenge', text: blurb(), url })) closeVs(); });
+    $('#vs-copy').addEventListener('click', async () => {
+      const url = link();
+      try { await navigator.clipboard.writeText(url); toast('Challenge link copied!'); closeVs(); } catch { prompt('Copy this link:', url); }
+    });
+  });
+
+  // Responder: send both results back to the challenger.
+  async function sendReply() {
+    if (!S.name) {
+      const n = prompt('Your name (shown to your friend):', '');
+      if (n === null) return;
+      S.name = n.trim().slice(0, 16); store.set('pxi.settings', S);
+    }
+    const url = challengeUrl(Object.assign(challengeBase(), { m: C.vs.m, s: C.vs.s, f: C.vs.f, h: C.vs.h, p: C.vs.p, d: C.vs.d, a: C.vs.a, b: mySide() }));
+    const cmp = compareRes(runSummary(), C.vs.a.r);
+    await shareOrCopy({ title: 'Challenge answered', text: `⚔️ I answered your challenge: ${resultLine(runSummary())} vs your ${resultLine(C.vs.a.r)}. ${cmp > 0 ? 'I win 😎' : cmp < 0 ? 'You win this time…' : 'Dead heat!'} See the derby:`, url });
+  }
+
+  // Opening a link: either an invite (accept to draft) or a reply (see the comparison).
+  function handleChallengeLink() {
+    const m = location.hash.match(/#c=([\w-]+)/);
+    if (!m) return false;
+    history.replaceState(null, '', location.pathname);
+    const ch = parseChallenge(m[1]);
+    if (!ch) { toast("That challenge link looks broken"); return false; }
+    if (ch.b) {
+      openVs(vsCard(ch, ch.b, false) + '<p class="muted small-text">Your friend answered your challenge. Same rolls, same league: here\'s how it went.</p>');
+      return true;
+    }
+    const where = ch.m === 'regions' ? `${REGION[ch.h]} Region League` : ch.d ? `Daily #${ch.d}` : `38–0 Challenge${ch.p === 'retro' ? ' (Gen 1–4)' : ''}`;
+    openVs(`<h2>⚔️ ${esc(ch.a.n)} challenges you!</h2>
+      <div class="vs-invite"><div><span class="muted">Mode</span><b>${where}</b></div><div><span class="muted">Formation</span><b>${ch.f}</b></div>
+      <div><span class="muted">Score to beat</span><b>${resultLine(ch.a.r)}</b></div></div>
+      <p class="muted small-text">You'll draft from the <b>same rolls</b> and play the <b>same league</b>. Their squad is revealed when you finish, plus a two-leg derby between your XIs.</p>
+      <div class="vs-actions"><button id="vs-accept" class="btn btn-gold">Accept challenge</button><button id="vs-later" class="btn">Not now</button></div>`);
+    $('#vs-later').addEventListener('click', closeVs);
+    $('#vs-accept').addEventListener('click', () => {
+      const view = ch.m === 'regions' ? 'regions' : 'challenge';
+      const run = RUNS[view];
+      if ((run.phase === 'draft' || run.phase === 'ready') && !confirm('This replaces your current run in that mode. Continue?')) return;
+      if (skipPlayback) skipPlayback();
+      S.view = view; C = run;
+      closeVs();
+      beginRun({ seed: ch.s, f: ch.f, home: ch.h, pool: ch.p, vs: ch });
+    });
+    return true;
+  }
+
   // ---------------- Help ----------------
   function openHelp(tab) {
     if (tab) showHelpTab(tab);
@@ -1928,5 +2249,6 @@
 
   initControls();
   render();
-  if (!S.seenHelp && !fromHash) openHelp('basics'); // first visit
+  const fromChallenge = handleChallengeLink();
+  if (!S.seenHelp && !fromHash && !fromChallenge) openHelp('basics'); // first visit
 })();

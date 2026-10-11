@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&family=Pixelify+Sans:wght@700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=c1597c0096" />
+  <link rel="stylesheet" href="styles.css?v=019368dbfe" />
 </head>
 <body>
   <div class="app">
@@ -59,6 +59,13 @@
         <h1>Pokémon <span class="accent">Starting XI</span><br /><span class="gold" id="ch-mode-title">38–0 Challenge</span></h1>
         <p class="lede" id="ch-lede">Each round rolls a region and a type. Draft a matching Pokémon (up to 3 Legendaries) into any open spot, fill all 11, then play a 38-game league season. Can you go 38–0?</p>
 
+        <div class="card-box daily-box" id="daily-box" hidden>
+          <div class="round-row"><div class="box-title" id="daily-title">📅 Daily Challenge</div><span class="muted small-text" id="daily-next"></span></div>
+          <p class="muted small-text" id="daily-desc"></p>
+          <button id="daily-play" class="btn btn-gold">▶ Play today's Daily</button>
+          <button id="daily-share" class="btn wide" hidden>📤 Share today's result</button>
+        </div>
+
         <div id="ch-setup">
           <div class="card-box">
             <div class="box-title">New run</div>
@@ -85,6 +92,7 @@
               <div class="box-title" id="ch-round">Round 1 / 11</div>
               <div class="muted small-text" id="ch-leg">Legendaries 0 / 3</div>
             </div>
+            <div class="vs-banner" id="ch-vs" hidden></div>
             <div class="roll" id="ch-roll"></div>
             <p class="muted small-text" id="ch-hint">Pick a Pokémon, then tap an open spot on the pitch.</p>
             <div class="ch-actions">
@@ -108,6 +116,7 @@
           <button id="ch-national" class="btn btn-gold" hidden>⛰️ Enter Victory Road</button>
           <button id="ch-hof" class="btn btn-gold" hidden>🏆 Hall of Fame</button>
           <button id="ch-share" class="btn wide" hidden>📤 Share result</button>
+          <button id="ch-challenge" class="btn wide" hidden>⚔️ Challenge a friend</button>
           <button id="ch-again" class="btn btn-gold">New run</button>
         </div>
 
@@ -258,6 +267,17 @@
             <li>Each of your players gets a <b>performance rating</b> for the season, based on what they actually did.</li>
           </ul>
           <p class="muted">A perfect 38–0 is extremely rare. Even an elite squad pulls it off only about 1 run in 70.</p>
+          <h3>📅 Daily Challenge</h3>
+          <ul>
+            <li>Everyone gets the <b>same rolls and formation</b> each day, with <b>one attempt</b>. A new Daily starts at midnight.</li>
+            <li>Share your result as an emoji grid of all 38 games and compare with friends.</li>
+          </ul>
+          <h3>⚔️ Challenge a friend</h3>
+          <ul>
+            <li>After any run (38–0, Daily or Region League), tap <b>Challenge a friend</b> to send a link.</li>
+            <li>Your friend drafts from <b>your exact rolls</b> with the same formation and plays <b>the same league</b>, against the same clubs with the same luck in each fixture. Your squad stays hidden until they finish.</li>
+            <li>Then you both see a side-by-side comparison and a <b>two-leg derby</b> between your XIs. They can send the result back to you.</li>
+          </ul>
         </section>
 
         <section data-help="regions" hidden>
@@ -322,6 +342,14 @@
     </div>
   </div>
 
+  <!-- Challenges -->
+  <div class="modal" id="vs-modal" hidden>
+    <div class="modal-card vs-modal-card">
+      <div class="modal-head"><span></span><button class="icon-btn" id="vs-close" aria-label="Close">✕</button></div>
+      <div class="vs-body" id="vs-body"></div>
+    </div>
+  </div>
+
   <!-- Hall of Fame -->
   <div class="hof" id="hof" hidden>
     <div class="hof-inner">
@@ -347,6 +375,6 @@
   <div class="toast" id="toast" hidden></div>
 
   <script src="data.js?v=a386ee55ba"></script>
-  <script src="app.js?v=f73c92ab38"></script>
+  <script src="app.js?v=9934d2c4ea"></script>
 </body>
 </html>

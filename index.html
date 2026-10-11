@@ -17,6 +17,7 @@
         <button class="mode-btn mode-challenge" data-view="challenge">▸ Play 38–0 Challenge</button>
         <button class="mode-btn mode-regions" data-view="regions">🌍 Region League</button>
         <button class="mode-btn mode-builder" data-view="builder">⚽ XI Builder</button>
+        <button class="mode-btn mode-records" data-view="records">📊 Records</button>
       </nav>
 
       <!-- ============ BUILDER PANEL ============ -->
@@ -104,6 +105,7 @@
         <div id="ch-result" hidden>
           <div class="card-box result-box" id="ch-result-box"></div>
           <button id="ch-national" class="btn btn-gold" hidden>🌍 Play the National League</button>
+          <button id="ch-share" class="btn wide" hidden>📤 Share result</button>
           <button id="ch-again" class="btn btn-gold">New run</button>
         </div>
 
@@ -115,6 +117,20 @@
 
         <div class="label-row"><span class="label">Sprites</span></div>
         <div class="seg sprite-seg" data-sprite-seg></div>
+      </section>
+
+      <!-- ============ RECORDS PANEL ============ -->
+      <section id="records-panel" class="panel" hidden>
+        <h1>Pokémon <span class="accent">Starting XI</span><br /><span class="gold">Records</span></h1>
+        <p class="lede">Every season you finish is saved here: trophies, all-time records, awards and your Pokémon's career stats. The pitch shows your All-Time XI.</p>
+        <div id="hist-body"></div>
+        <div class="btn-grid three">
+          <button id="hist-export" class="btn" title="Download your history as a backup file">⤓ Export</button>
+          <button id="hist-import" class="btn" title="Load a history backup file">⤒ Import</button>
+          <button id="hist-clear" class="btn">🗑 Clear</button>
+        </div>
+        <input type="file" id="hist-file" accept="application/json,.json" hidden />
+        <p class="muted small-text">History is saved in this browser only. Export a backup to move it to another device.</p>
       </section>
 
       <footer class="foot">
@@ -166,6 +182,17 @@
       </div>
       <p class="muted small-text pad">Picking someone already in your squad swaps the two. You're the manager — use the base stats to decide who plays where.</p>
       <div class="picker-grid" id="picker-grid"></div>
+    </div>
+  </div>
+
+  <!-- Club page -->
+  <div class="modal" id="club-modal" hidden>
+    <div class="modal-card club-card">
+      <div class="modal-head">
+        <h2 id="club-title">Club</h2>
+        <button class="icon-btn" id="club-close" aria-label="Close">✕</button>
+      </div>
+      <div class="club-body" id="club-body"></div>
     </div>
   </div>
 

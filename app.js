@@ -952,7 +952,8 @@
     $('#ch-national').hidden = !canGoNational || !!seasonTimer;
     $('#ch-again').hidden = !!seasonTimer;
     $('#ch-hof').hidden = !!seasonTimer || !(C.national && C.national.finish === 'Champion');
-    $('#ch-challenge').hidden = !!seasonTimer || !(C.phase === 'result' || C.phase === 'national') || !C.seed;
+    // Dailies are already shared by everyone, so they don't get a challenge link.
+    $('#ch-challenge').hidden = !!seasonTimer || !(C.phase === 'result' || C.phase === 'national') || !C.seed || !!C.daily;
     $('#ch-challenge').textContent = C.vs ? '⚔️ Challenge someone else' : '⚔️ Challenge a friend';
     renderDaily();
     $('#ch-vs').hidden = !C.vs || C.phase === 'result' || C.phase === 'national';

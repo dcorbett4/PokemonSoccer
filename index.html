@@ -8,22 +8,28 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&family=Pixelify+Sans:wght@700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=019368dbfe" />
+  <link rel="stylesheet" href="styles.css?v=e5965eff46" />
 </head>
 <body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><span class="brand-ball">⚽</span><span>Pokémon <b>Starting XI</b></span></div>
+      <nav class="modes" aria-label="Game modes">
+        <button class="mode-btn mode-challenge" data-view="challenge"><span class="mi">🏆</span><span class="ml">38–0 Challenge</span><span class="ms">38–0</span></button>
+        <button class="mode-btn mode-regions" data-view="regions"><span class="mi">🌍</span><span class="ml">Region League</span><span class="ms">Regions</span></button>
+        <button class="mode-btn mode-builder" data-view="builder"><span class="mi">⚽</span><span class="ml">XI Builder</span><span class="ms">Builder</span></button>
+        <button class="mode-btn mode-records" data-view="records"><span class="mi">📊</span><span class="ml">Records</span><span class="ms">Records</span></button>
+      </nav>
+      <button class="help-btn" id="help-open" title="How to play (?)"><span>❓</span><span class="ml">How to play</span></button>
+    </div>
+  </header>
+
   <div class="app">
     <aside class="sidebar">
-      <nav class="modes">
-        <button class="mode-btn mode-challenge" data-view="challenge">▸ Play 38–0 Challenge</button>
-        <button class="mode-btn mode-regions" data-view="regions">🌍 Region League</button>
-        <button class="mode-btn mode-builder" data-view="builder">⚽ XI Builder</button>
-        <button class="mode-btn mode-records" data-view="records">📊 Records</button>
-      </nav>
-      <button class="help-btn" id="help-open">❓ How to play</button>
 
       <!-- ============ BUILDER PANEL ============ -->
       <section id="builder-panel" class="panel">
-        <h1>Pokémon <span class="accent">Starting XI</span><br />Builder</h1>
+        <h1><span class="accent">XI</span> Builder</h1>
         <p class="lede">Draft your 11-player soccer lineup from Pokémon. Tap a player to swap them out, or drag one onto another to switch spots. Save the image of your lineup and share it with friends.</p>
 
         <button id="btn-download" class="btn btn-primary">⤓ Download image</button>
@@ -56,7 +62,7 @@
 
       <!-- ============ CHALLENGE PANEL ============ -->
       <section id="challenge-panel" class="panel" hidden>
-        <h1>Pokémon <span class="accent">Starting XI</span><br /><span class="gold" id="ch-mode-title">38–0 Challenge</span></h1>
+        <h1><span class="gold" id="ch-mode-title">38–0 Challenge</span></h1>
         <p class="lede" id="ch-lede">Each round rolls a region and a type. Draft a matching Pokémon (up to 3 Legendaries) into any open spot, fill all 11, then play a 38-game league season. Can you go 38–0?</p>
 
         <div class="card-box daily-box" id="daily-box" hidden>
@@ -132,7 +138,7 @@
 
       <!-- ============ RECORDS PANEL ============ -->
       <section id="records-panel" class="panel" hidden>
-        <h1>Pokémon <span class="accent">Starting XI</span><br /><span class="gold">Records</span></h1>
+        <h1><span class="pink">Records</span></h1>
         <p class="lede">Every season you finish is saved here: trophies, all-time records, awards and your Pokémon's career stats. The pitch shows your All-Time XI.</p>
         <div id="hist-body"></div>
         <div class="btn-grid three">
@@ -274,7 +280,7 @@
           </ul>
           <h3>⚔️ Challenge a friend</h3>
           <ul>
-            <li>After any run (38–0, Daily or Region League), tap <b>Challenge a friend</b> to send a link.</li>
+            <li>After a 38–0 or Region League run, tap <b>Challenge a friend</b> to send a link. (Dailies already have everyone on the same rolls, so just share your result.)</li>
             <li>Your friend drafts from <b>your exact rolls</b> with the same formation and plays <b>the same league</b>, against the same clubs with the same luck in each fixture. Your squad stays hidden until they finish.</li>
             <li>Then you both see a side-by-side comparison and a <b>two-leg derby</b> between your XIs. They can send the result back to you.</li>
           </ul>
@@ -375,6 +381,6 @@
   <div class="toast" id="toast" hidden></div>
 
   <script src="data.js?v=a386ee55ba"></script>
-  <script src="app.js?v=9934d2c4ea"></script>
+  <script src="app.js?v=7d6806144e"></script>
 </body>
 </html>

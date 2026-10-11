@@ -7,8 +7,8 @@
   <meta name="description" content="Draft your 11-player soccer lineup from Pokémon. Pick a formation, swap players, and share your Starting XI." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ced5a60380" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&family=Pixelify+Sans:wght@700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=c1597c0096" />
 </head>
 <body>
   <div class="app">
@@ -105,7 +105,8 @@
 
         <div id="ch-result" hidden>
           <div class="card-box result-box" id="ch-result-box"></div>
-          <button id="ch-national" class="btn btn-gold" hidden>🌍 Play the National League</button>
+          <button id="ch-national" class="btn btn-gold" hidden>⛰️ Enter Victory Road</button>
+          <button id="ch-hof" class="btn btn-gold" hidden>🏆 Hall of Fame</button>
           <button id="ch-share" class="btn wide" hidden>📤 Share result</button>
           <button id="ch-again" class="btn btn-gold">New run</button>
         </div>
@@ -208,7 +209,7 @@
           <h3>Modes</h3>
           <div class="help-modes">
             <div><b class="m-ch">▸ 38–0 Challenge</b><span>Draft a squad from random rolls, then try to win all 38 league games.</span></div>
-            <div><b class="m-rg">🌍 Region League</b><span>Draft mostly from your home region. Finish top 4 to reach the National League against the other regions.</span></div>
+            <div><b class="m-rg">🌍 Region League</b><span>Draft mostly from your home region. Finish top 4 to reach Victory Road against the other regions.</span></div>
             <div><b class="m-bu">⚽ XI Builder</b><span>Free play. Build any lineup you want and share it. No games are played.</span></div>
             <div><b class="m-rc">📊 Records</b><span>Your trophies, all-time records, Pokémon career stats and every season you've finished.</span></div>
           </div>
@@ -265,13 +266,14 @@
             <li>Choose a <b>home region</b> and formation.</li>
             <li>Draft as in the 38–0 Challenge, but <b>75% of rolls</b> come from your home region (marked 🏠).</li>
             <li>Play a 38-game league against clubs named after towns in your region.</li>
-            <li><b>Finish top 4</b> to qualify for the <b>🌍 National League</b>: 16 clubs from every region.</li>
+            <li><b>Finish top 4</b> to qualify for <b>⛰️ Victory Road</b>: 16 clubs from every region.</li>
           </ol>
-          <h3>National League format</h3>
+          <h3>Victory Road format</h3>
           <ul>
-            <li><b>Group stage:</b> 4 groups of 4, home and away. The top 2 in each group go through.</li>
-            <li><b>Knockouts:</b> quarter-finals, semi-finals, then a final at a neutral ground. Level after 90 minutes means extra time, then penalties.</li>
-            <li>National clubs are stronger than most regional clubs, so expect a tougher fight.</li>
+            <li><b>Group stage:</b> 4 groups of 4, home and away (6 games). Only the <b>group winner</b> goes through.</li>
+            <li><b>Final Four:</b> only the four group winners go through, to semi-finals and then a final at a neutral ground. Level after 90 minutes means extra time, then penalties.</li>
+            <li>Victory Road clubs are stronger than most regional clubs, so expect a tougher fight.</li>
+            <li>Win it all to enter the <b>🏆 Hall of Fame</b>.</li>
           </ul>
         </section>
 
@@ -320,6 +322,17 @@
     </div>
   </div>
 
+  <!-- Hall of Fame -->
+  <div class="hof" id="hof" hidden>
+    <div class="hof-inner">
+      <img id="hof-img" alt="Hall of Fame: your Victory Road champions" />
+      <div class="hof-actions">
+        <button id="hof-share" class="btn btn-gold">📤 Share</button>
+        <button id="hof-close" class="btn">Continue</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Club page -->
   <div class="modal" id="club-modal" hidden>
     <div class="modal-card club-card">
@@ -334,6 +347,6 @@
   <div class="toast" id="toast" hidden></div>
 
   <script src="data.js?v=a386ee55ba"></script>
-  <script src="app.js?v=4aa811a8df"></script>
+  <script src="app.js?v=c086016b25"></script>
 </body>
 </html>

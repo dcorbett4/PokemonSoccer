@@ -666,7 +666,7 @@
     ctx.fillStyle = '#8b93a1'; ctx.font = '600 26px Inter, sans-serif';
     const res = isRun() && (C.phase === 'result' || C.phase === 'national') && C.result ? C.result.me : null;
     const mode = C.mode === 'regions' ? `${REGION[C.home]} League` : '38–0 Challenge';
-    const nat = res && C.national ? ` · National: ${NAT_LABEL[C.national.finish]}` : '';
+    const nat = res && C.national ? ` · Victory Road: ${NAT_LABEL[C.national.finish]}` : '';
     const sub = isRun() ? `${mode} · ${sq.f}${res ? ` · ${res.w}–${res.d}–${res.l} · ${ord(res.position)}${nat}` : ''}` : `${sq.f} · ${REGION[B.gen]}${B.gen ? ' (Gen ' + B.gen + ')' : ' Gens'}`;
     ctx.fillText(sub, PX, 130);
 
@@ -792,7 +792,8 @@
   }
 
   const NAT_STAGES = ['Group stage', 'Quarter-final', 'Semi-final', 'Runner-up', 'Champion'];
-  const NAT_LABEL = { 'Group stage': 'Group stage exit', 'Quarter-final': 'Quarter-finalists', 'Semi-final': 'Semi-finalists', 'Runner-up': 'Runners-up', Champion: '🏆 Champions' };
+  // 'Quarter-final' only appears in saves from before Victory Road switched to a Final Four.
+  const NAT_LABEL = { 'Group stage': 'Out on Victory Road', 'Quarter-final': 'Quarter-finalists', 'Semi-final': 'Final Four', 'Runner-up': 'Runners-up', Champion: '🏆 Champions' };
 
   function newRun(mode) {
     return {
@@ -873,7 +874,7 @@
     const R = C.mode === 'regions';
     $('#ch-mode-title').textContent = R ? 'Region League' : '38–0 Challenge';
     $('#ch-lede').textContent = R
-      ? `Pick a home region — 75% of your draft rolls come from there. Fill all 11, play a 38-game regional league, and finish top 4 to reach the National League against the best clubs from every other region.`
+      ? `Pick a home region — 75% of your draft rolls come from there. Fill all 11, play a 38-game regional league, and finish top 4 to reach Victory Road against the best clubs from every other region. Win your group to make the Final Four.`
       : 'Each round rolls a region and a type. Draft a matching Pokémon (up to 3 Legendaries) into any open spot, fill all 11, then play a 38-game league season. Can you go 38–0?';
     $('#ch-pool-wrap').hidden = R;
     $('#ch-home-wrap').hidden = !R;
@@ -887,7 +888,7 @@
     $('#ch-play').textContent = R ? `▶ Play the ${REGION[C.home]} League` : '▶ Play the season';
 
     if (R) {
-      $('#st-k1').textContent = 'National titles'; $('#st-best').textContent = SR.titles;
+      $('#st-k1').textContent = 'Victory Road titles'; $('#st-best').textContent = SR.titles;
       $('#st-k2').textContent = 'Best finish'; $('#st-rec').textContent = SR.bestText || '–';
     } else {
       $('#st-k1').textContent = 'Best points'; $('#st-best').textContent = ST.best == null ? '–' : ST.best + ' pts';
@@ -898,6 +899,7 @@
     const canGoNational = qualifies() && C.phase === 'result' && !C.national;
     $('#ch-national').hidden = !canGoNational || !!seasonTimer;
     $('#ch-again').hidden = !!seasonTimer;
+    $('#ch-hof').hidden = !!seasonTimer || !(C.national && C.national.finish === 'Champion');
     $('#ch-share').hidden = !!seasonTimer || !(C.phase === 'result' || C.phase === 'national') || !C.result;
     $('#ch-again').className = canGoNational ? 'btn wide' : 'btn btn-gold';
     $('#ch-again').textContent = canGoNational ? 'End run' : 'New run';
@@ -996,7 +998,7 @@
         const me = C.result.me;
         if (me.position === 1 || me.l === 0) confetti(me.w === 38 ? 320 : 180);
         else if (R && me.position <= 4) confetti(90);
-        if (R && me.position <= 4) toast('Top 4 — you qualified for the National League!');
+        if (R && me.position <= 4) toast('Top 4 — you qualified for Victory Road!');
         else if (!R && newBest) toast(`New best: ${me.pts} pts!`);
         recordSeason();
       },
@@ -1004,7 +1006,7 @@
   });
 
   $('#ch-national').addEventListener('click', () => {
-    // National clubs avoid (but don't ban) anyone already used in this run's league.
+    // Victory Road clubs avoid (but don't ban) anyone already used in this run's league.
     const leagueClubs = C.result.clubs || [{ name: 'Your XI', me: true, region: C.home, f: C.f, xi: C.xi.slice() }];
     C.national = simulateNational(leagueClubs[0], countUses(leagueClubs));
     C.phase = 'national';
@@ -1021,7 +1023,7 @@
       delay: (i) => (C.national.games[i] && !C.national.games[i].short.startsWith('G') ? 1100 : 380),
       onFinish: () => {
         const fin = C.national.finish;
-        if (fin === 'Champion') { confetti(360); toast('🏆 National Champions!'); } else if (newBest) toast(`New best finish: ${NAT_LABEL[fin]}`);
+        if (fin === 'Champion') { confetti(360); showHallOfFame(); } else if (newBest) toast(`New best finish: ${NAT_LABEL[fin]}`);
         recordSeason();
       },
     });
@@ -1184,7 +1186,8 @@
     return res;
   }
 
-  // National League: 16 clubs (you + the best of the other regions), 4 groups of 4, then QF / SF / Final.
+  // Victory Road: 16 clubs (you + the best of the other regions) in 4 groups of 4. Group winners make the
+  // Final Four: semi-finals, then a neutral-ground final.
   function simulateNational(meClub, uses) {
     const specs = [];
     for (let g = 1; g <= 9; g++) {
@@ -1202,7 +1205,7 @@
       const h = gr[x], a = gr[y];
       const { gh, ga } = playMatch(str[h], str[a]);
       tally(rec[h], gh, ga); tally(rec[a], ga, gh);
-      matches.push({ md: ri + 1, stage: `Group · MD${ri + 1}`, short: `G${ri + 1}`, h, a, gh, ga, eh: goals(h, gh), ea: goals(a, ga) });
+      matches.push({ md: ri + 1, stage: `Victory Road · MD${ri + 1}`, short: `G${ri + 1}`, h, a, gh, ga, eh: goals(h, gh), ea: goals(a, ga) });
     })));
     const tables = groups.map((gr) => gr.slice().sort((x, y) => sortTable(rec[x], rec[y]) || Math.random() - 0.5));
 
@@ -1226,12 +1229,11 @@
       return winner;
     };
     const [A, B, Cg, D] = tables;
-    const qf = [[A[0], B[1]], [B[0], A[1]], [Cg[0], D[1]], [D[0], Cg[1]]].map(([h, a]) => playKO(h, a, 'Quarter-final', 'QF'));
-    const sf = [[qf[0], qf[1]], [qf[2], qf[3]]].map((pair) => { const [h, a] = shuffle(pair.slice()); return playKO(h, a, 'Semi-final', 'SF'); });
+    const sf = [[A[0], B[0]], [Cg[0], D[0]]].map((pair) => { const [h, a] = shuffle(pair.slice()); return playKO(h, a, 'Semi-final', 'SF'); });
     const champ = playKO(sf[0], sf[1], 'Final', 'F', true);
 
     let finish = 'Group stage';
-    if (A.indexOf(0) <= 1) {
+    if (A[0] === 0) {
       const last = matches.filter((m) => m.winner != null && (m.h === 0 || m.a === 0)).pop();
       finish = champ === 0 ? 'Champion' : { 'Quarter-final': 'Quarter-final', 'Semi-final': 'Semi-final', Final: 'Runner-up' }[last.stage];
     }
@@ -1406,7 +1408,7 @@
     const R = C.mode === 'regions';
     const showNat = R && C.national && resultComp === 'national';
     const compSwitch = R && C.national
-      ? `<div class="seg comp-switch"><button data-comp="league" class="${showNat ? '' : 'on'}">🏠 ${REGION[C.home]} League</button><button data-comp="national" class="${showNat ? 'on' : ''}">🌍 National League</button></div>`
+      ? `<div class="seg comp-switch"><button data-comp="league" class="${showNat ? '' : 'on'}">🏠 ${REGION[C.home]} League</button><button data-comp="national" class="${showNat ? 'on' : ''}">⛰️ Victory Road</button></div>`
       : '';
     $('#ch-result-box').innerHTML = compSwitch + (showNat ? nationalHTML() : leagueHTML());
   }
@@ -1424,9 +1426,9 @@
     else verdict = '⬇️ Relegated…';
     let extra = '';
     if (R) {
-      extra = me.position > 4 ? '<div class="sub">Missed out on the National League (top 4 qualify).</div>'
-        : C.national ? `<div class="sub qual">🌍 National League: <b>${NAT_LABEL[C.national.finish]}</b></div>`
-          : '<div class="sub qual">✅ Qualified for the National League!</div>';
+      extra = me.position > 4 ? '<div class="sub">Missed out on Victory Road (top 4 qualify).</div>'
+        : C.national ? `<div class="sub qual">⛰️ Victory Road: <b>${NAT_LABEL[C.national.finish]}</b></div>`
+          : '<div class="sub qual">✅ Qualified for Victory Road!</div>';
     }
     if (!['squad', 'team', 'table', 'awards', 'matches'].includes(resultTab)) resultTab = 'squad';
     let body;
@@ -1473,16 +1475,18 @@
     const N = C.national, games = N.games;
     const rec = games.reduce((r, g) => { r[g.res]++; r.gf += g.gf; r.ga += g.ga; return r; }, { W: 0, D: 0, L: 0, gf: 0, ga: 0 });
     const verdict = {
-      Champion: '🏆 NATIONAL CHAMPIONS!', 'Runner-up': '🥈 Beaten in the Final', 'Semi-final': 'Knocked out in the Semi-finals',
-      'Quarter-final': 'Knocked out in the Quarter-finals', 'Group stage': 'Eliminated in the group stage',
+      Champion: '🏆 VICTORY ROAD CHAMPIONS!', 'Runner-up': '🥈 Beaten in the Final', 'Semi-final': 'Knocked out in the Final Four',
+      'Quarter-final': 'Knocked out in the Quarter-finals', 'Group stage': "Didn't make the Final Four",
     }[N.finish];
     if (!['squad', 'groups', 'bracket', 'awards', 'matches'].includes(resultTab)) resultTab = 'squad';
     const reg = (g) => (g ? `<span class="reg">${REGION[g].slice(0, 3)}</span>` : '');
     let body;
     if (resultTab === 'groups') {
+      // Older saves had quarter-finals (top 2 advanced); now only group winners reach the Final Four.
+      const advance = (N.clubs ? N.matches.some((m) => m.stage === 'Quarter-final') : N.ko.some((k) => k.stage === 'Quarter-final')) ? 2 : 1;
       body = N.groups.map((t, gi) => `<div class="group"><div class="group-title">Group ${'ABCD'[gi]}</div><table class="league">
         <tr><th>#</th><th class="team">Club</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr>
-        ${t.map((r, i) => `<tr class="${r.me ? 'me' : ''}${i === 1 ? ' cut' : ''}${N.clubs ? ' clickable' : ''}"${clubAttr(N, r.ci)}><td>${i + 1}</td><td class="team">${reg(r.region)}${esc(r.name)}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${sgn(r.gf - r.ga)}</td><td><b>${r.pts}</b></td></tr>`).join('')}
+        ${t.map((r, i) => `<tr class="${r.me ? 'me' : ''}${i === advance - 1 ? ' cut' : ''}${N.clubs ? ' clickable' : ''}"${clubAttr(N, r.ci)}><td>${i + 1}</td><td class="team">${reg(r.region)}${esc(r.name)}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${sgn(r.gf - r.ga)}</td><td><b>${r.pts}</b></td></tr>`).join('')}
       </table></div>`).join('');
     } else if (resultTab === 'bracket') {
       // Older saves stored a flat knockout list; newer ones keep every match with club indices.
@@ -1490,7 +1494,7 @@
         stage: m.stage, h: m.h, a: m.a, home: N.clubs[m.h].name, away: N.clubs[m.a].name, hMe: m.h === 0, aMe: m.a === 0,
         hReg: N.clubs[m.h].region, aReg: N.clubs[m.a].region, gh: m.gh, ga: m.ga, et: m.et, pens: m.pens, winner: N.clubs[m.winner].name,
       })) : N.ko;
-      body = ['Quarter-final', 'Semi-final', 'Final'].map((st) => `<div class="group-title">${st === 'Final' ? 'Final' : st + 's'}</div>
+      body = ['Quarter-final', 'Semi-final', 'Final'].filter((st) => kos.some((k) => k.stage === st)).map((st) => `<div class="group-title">${st === 'Final' ? 'Final' : st + 's'}</div>
         ${kos.filter((k) => k.stage === st).map((k) => {
           const side = (name, regn, isMe, ci) => `<span class="${k.winner === name ? 'win' : ''}${isMe ? ' meteam' : ''}${ci != null ? ' clickable' : ''}"${ci != null ? clubAttr(N, ci) : ''}>${reg(regn)}${esc(name)}</span>`;
           return `<div class="tie">${side(k.home, k.hReg, k.hMe, k.h)}<b>${k.gh}–${k.ga}</b>${side(k.away, k.aReg, k.aMe, k.a)}${k.pens ? `<small>pens ${k.pens[0]}–${k.pens[1]}</small>` : k.et ? '<small>aet</small>' : ''}</div>`;
@@ -1503,12 +1507,12 @@
       body = squadBody(games, 'Player of the Tournament');
     }
     return `
-      <div class="box-title">🌍 National League</div>
+      <div class="box-title">⛰️ Victory Road</div>
       <div class="record">${rec.W}–${rec.D}–${rec.L}</div>
       <div class="sub">W–D–L · GF ${rec.gf} · GA ${rec.ga} · GD ${sgn(rec.gf - rec.ga)}</div>
       <div class="verdict">${verdict}</div>
       ${formStrip(games)}
-      ${tabsHTML([['squad', 'Squad'], ['groups', 'Groups'], ['bracket', 'Bracket'], ['awards', 'Awards'], ['matches', 'Games']])}
+      ${tabsHTML([['squad', 'Squad'], ['groups', 'Groups'], ['bracket', 'Final 4'], ['awards', 'Awards'], ['matches', 'Games']])}
       <div class="tab-body">${body}</div>`;
   }
 
@@ -1535,7 +1539,7 @@
       const gi = res.groups.findIndex((t) => t.some((r) => r.ci === ci));
       const gpos = res.groups[gi].findIndex((r) => r.ci === ci) + 1;
       const last = res.matches.filter((m) => m.winner != null && (m.h === ci || m.a === ci)).pop();
-      const stage = res.champion === ci ? '🏆 Champions' : last ? (last.stage === 'Final' ? 'Runners-up' : `Out in the ${last.stage}s`) : 'Group stage exit';
+      const stage = res.champion === ci ? '🏆 Champions' : last ? (last.stage === 'Final' ? 'Runners-up' : last.stage === 'Semi-final' ? 'Final Four' : `Out in the ${last.stage}s`) : 'Out on Victory Road';
       standing = `Group ${'ABCD'[gi]} · ${ord(gpos)} · ${stage}`;
     } else {
       const row = res.table.find((t) => t.ci === ci);
@@ -1639,7 +1643,7 @@
     const tile = (k, v) => `<div class="stat"><div class="stat-k">${k}</div><div class="stat-v">${v}</div></div>`;
     const myAward = (k) => HIST.reduce((t, e) => t + [e.awards, e.natAwards].filter((s) => s && s[k] && s[k].me).length, 0);
     const cabinet = `<div class="cabinet">
-      ${tile('Seasons', HIST.length)}${tile('🏆 League titles', n((e) => e.league.pos === 1))}${tile('🌍 National titles', n((e) => e.nat && e.nat.finish === 'Champion'))}
+      ${tile('Seasons', HIST.length)}${tile('🏆 League titles', n((e) => e.league.pos === 1))}${tile('⛰️ Victory Road titles', n((e) => e.nat && e.nat.finish === 'Champion'))}
       ${tile('🛡️ Invincibles', n((e) => e.league.l === 0))}${tile('💯 Perfect 38–0', n((e) => e.league.w === 38))}${tile('👟 Golden Boots', myAward('boot'))}
     </div>`;
 
@@ -1674,7 +1678,7 @@
     const awardLine = (icon, lbl, a, suffix) => (a ? `<div class="kv wide${a.me ? ' mine' : ''}"><span>${icon} ${lbl}</span><b>${pkName(a.id)} <small>${esc(a.club)} · ${a.v}${suffix}</small></b></div>` : '');
     const seasons = HIST.map((e) => {
       const L = e.league;
-      const natTxt = e.nat ? ` · 🌍 ${NAT_LABEL[e.nat.finish]}` : '';
+      const natTxt = e.nat ? ` · ⛰️ ${NAT_LABEL[e.nat.finish]}` : '';
       const trophy = L.pos === 1 ? '🏆 ' : '';
       return `<details class="season"><summary><span class="s-main">${trophy}${modeLabel(e)} <span class="muted">· ${e.f}</span></span>
           <span class="s-rec">${L.w}–${L.d}–${L.l} · ${ord(L.pos)}${natTxt}</span><span class="s-date muted">${dateLabel(e.date)}</span></summary>
@@ -1682,12 +1686,12 @@
           <div class="kv-grid">
             <div class="kv"><span>Points</span><b>${L.pts}</b></div><div class="kv"><span>GF / GA</span><b>${L.gf} / ${L.ga}</b></div>
             <div class="kv"><span>Champions</span><b>${esc(L.champion)}</b></div><div class="kv"><span>Unbeaten run</span><b>${L.unbeaten}</b></div>
-            ${e.nat ? `<div class="kv"><span>National</span><b>${e.nat.w}–${e.nat.d}–${e.nat.l}</b></div><div class="kv"><span>Nat. winners</span><b>${esc(e.nat.champion)}</b></div>` : ''}
+            ${e.nat ? `<div class="kv"><span>Victory Road</span><b>${e.nat.w}–${e.nat.d}–${e.nat.l}</b></div><div class="kv"><span>VR winners</span><b>${esc(e.nat.champion)}</b></div>` : ''}
           </div>
           <div class="group-title">League awards</div>
           ${awardLine('👟', 'Golden Boot', e.awards.boot, 'G')}${awardLine('🎯', 'Top Assists', e.awards.assists, 'A')}
           ${awardLine('⭐', 'Player of the Season', e.awards.pots, ' RTG')}${awardLine('🧤', 'Golden Glove', e.awards.glove, ' CS')}
-          ${e.natAwards ? `<div class="group-title">National League awards</div>
+          ${e.natAwards ? `<div class="group-title">Victory Road awards</div>
             ${awardLine('👟', 'Golden Boot', e.natAwards.boot, 'G')}${awardLine('⭐', 'Player of the Tournament', e.natAwards.pots, ' RTG')}` : ''}
           <div class="group-title">Your squad</div>
           <div class="table-wrap"><table class="league squad">
@@ -1744,7 +1748,7 @@
   function shareText() {
     const me = C.result.me, R = C.mode === 'regions';
     let s = `⚽ My Pokémon Starting XI went ${me.w}–${me.d}–${me.l} (${me.pts} pts, ${ord(me.position)}) in ${R ? `the ${REGION[C.home]} League` : 'the 38–0 Challenge'}`;
-    if (C.national) s += C.national.finish === 'Champion' ? ' and won the National League 🏆' : `, then made the National League (${NAT_LABEL[C.national.finish]})`;
+    if (C.national) s += C.national.finish === 'Champion' ? ' and conquered Victory Road 🏆' : `, then reached Victory Road (${NAT_LABEL[C.national.finish]})`;
     s += '!';
     const all = C.result.games.concat(C.national ? C.national.games : []);
     if (hasGoalData(C.result)) {
@@ -1758,7 +1762,8 @@
     const url = location.origin + location.pathname;
     const text = shareText();
     let blob = null;
-    try { blob = await new Promise((r) => buildImage().then((c) => c.toBlob(r, 'image/png'))); } catch { /* image is optional */ }
+    const champ = C.national && C.national.finish === 'Champion';
+    try { blob = await new Promise((r) => (champ ? hallOfFameCanvas() : buildImage()).then((c) => c.toBlob(r, 'image/png'))); } catch { /* image is optional */ }
     const file = blob ? new File([blob], 'pokemon-starting-xi.png', { type: 'image/png' }) : null;
     try {
       if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -1780,6 +1785,111 @@
     toast(copied ? 'Result copied — image saved too' : 'Image saved');
   }
   $('#ch-share').addEventListener('click', shareResult);
+
+  // ---------------- Hall of Fame (Victory Road champions) ----------------
+  // A 16×15 pixel trophy, drawn with nearest-neighbour scaling.
+  const TROPHY = [
+    '..kkkkkkkkkkkk..', 'kkkllyyyyyyyddkk', 'kyklyyyyyyyyydyk', 'kykllyyyyyyyddyk', 'kkklyyyyyyyyydkk',
+    '..klyyyyyyyyydk.', '...klyyyyyyydk..', '....kklyyyddkk..', '......kyydk.....', '......kyydk.....',
+    '.....kkyydkk....', '....kyyyyyydk...', '...kbbbbbbbbbk..', '...kbbbbbbbbbk..', '...kkkkkkkkkkk..',
+  ];
+  const TROPHY_COLORS = { k: '#3a2410', y: '#f5c84c', l: '#fff3b0', d: '#c8901e', b: '#7a4a24' };
+  function drawTrophy(ctx, cx, bottom, px) {
+    const w = TROPHY[0].length * px, top = bottom - TROPHY.length * px;
+    TROPHY.forEach((row, r) => [...row].forEach((ch, c) => {
+      if (ch === '.') return;
+      ctx.fillStyle = TROPHY_COLORS[ch];
+      ctx.fillRect(Math.round(cx - w / 2 + c * px), Math.round(top + r * px), px, px);
+    }));
+  }
+
+  async function hallOfFameCanvas() {
+    const W = 1200, H = 900, top = 130, bot = 770;
+    try { await document.fonts.load('700 48px "Pixelify Sans"'); } catch { /* falls back to monospace */ }
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+    const font = (px) => `700 ${px}px "Pixelify Sans", ui-monospace, monospace`;
+    ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, W, H);
+
+    // Stage: hot radial glow with light rays, a bright horizon band and confetti.
+    const sx = 30, sw = W - 60, sh = bot - top, cx = W / 2, cy = top + sh * 0.45;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(sx, top, sw, sh); ctx.clip();
+    const g = ctx.createRadialGradient(cx, cy, 20, cx, cy, sw * 0.7);
+    g.addColorStop(0, '#ffe08a'); g.addColorStop(0.25, '#ff9a3c'); g.addColorStop(0.6, '#ee4a24'); g.addColorStop(1, '#a8161a');
+    ctx.fillStyle = g; ctx.fillRect(sx, top, sw, sh);
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2 + 0.1;
+      ctx.fillStyle = i % 2 ? 'rgba(255,236,170,.20)' : 'rgba(255,200,120,.10)';
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a - 0.07) * 1400, cy + Math.sin(a - 0.07) * 1400);
+      ctx.lineTo(cx + Math.cos(a + 0.07) * 1400, cy + Math.sin(a + 0.07) * 1400);
+      ctx.closePath(); ctx.fill();
+    }
+    const band = ctx.createLinearGradient(0, cy + 60, 0, cy + 200);
+    band.addColorStop(0, 'rgba(255,255,255,0)'); band.addColorStop(0.5, 'rgba(255,235,235,.55)'); band.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = band; ctx.fillRect(sx, cy + 60, sw, 140);
+    const cols = ['#b48cff', '#fff4c2', '#ffd24a', '#ff8fd0', '#ffffff'];
+    for (let i = 0; i < 70; i++) {
+      ctx.save();
+      ctx.translate(sx + Math.random() * sw, top + Math.random() * sh);
+      ctx.rotate(Math.random() * Math.PI);
+      ctx.fillStyle = cols[i % cols.length];
+      ctx.globalAlpha = 0.55 + Math.random() * 0.45;
+      const sz = 6 + Math.random() * 12;
+      ctx.fillRect(-sz / 2, -sz / 2, sz, sz);
+      ctx.restore();
+    }
+
+    // The squad: best performers in front, flanking the trophy.
+    const all = C.result.games.concat(C.national.games);
+    const pr = hasGoalData(C.result) ? perfRatings(all) : C.xi.map(() => 0);
+    const order = C.xi.map((id, i) => ({ id, r: pr[i] })).filter((x) => x.id).sort((a, b) => b.r - a.r);
+    const front = order.slice(0, 4), back = order.slice(4);
+    const imgs = new Map(await Promise.all(order.map(async ({ id }) => [id, (await loadImg(spriteUrl(id, 'pixel'))) || (await loadImg(spriteUrl(id, 'art')))])));
+    ctx.imageSmoothingEnabled = false;
+    const drawMon = (id, x, baseline, size) => {
+      const im = imgs.get(id);
+      if (!im) return;
+      ctx.save(); ctx.shadowColor = 'rgba(60,0,0,.45)'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 6;
+      ctx.drawImage(im, x - size / 2, baseline - size * 0.9, size, size);
+      ctx.restore();
+    };
+    back.forEach((m, i) => drawMon(m.id, sx + 90 + (i * (sw - 180)) / Math.max(1, back.length - 1), cy + 150, 230));
+    const fx = [cx - 400, cx - 215, cx + 215, cx + 400];
+    front.forEach((m, i) => drawMon(m.id, fx[i], bot - 20, 280));
+    drawTrophy(ctx, cx, bot - 40, 13);
+    ctx.restore();
+
+    // Banner and footer, in a chunky pixel font.
+    const text = (str, y, px) => {
+      ctx.font = font(px); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#3a3a3a'; ctx.fillText(str, W / 2 + 4, y + 4);
+      ctx.fillStyle = '#f4f4f4'; ctx.fillText(str, W / 2, y);
+    };
+    text('Victory Road Champion! Congratulations!', top / 2 + 4, 50);
+    const vr = C.national.games.reduce((r, x) => { r[x.res]++; return r; }, { W: 0, D: 0, L: 0 });
+    const id = String(C.runId || Date.now()).slice(-5);
+    text(`YOUR XI  ID:${id}  ${REGION[C.home]}  VR ${vr.W}-${vr.D}-${vr.L}`, bot + (H - bot) / 2, 46);
+    return c;
+  }
+
+  async function showHallOfFame() {
+    const box = $('#hof');
+    box.hidden = false;
+    box.classList.remove('show');
+    $('#hof-img').removeAttribute('src');
+    const c = await hallOfFameCanvas();
+    $('#hof-img').src = c.toDataURL('image/png');
+    void box.offsetWidth;
+    box.classList.add('show');
+    confetti(260);
+  }
+  $('#ch-hof').addEventListener('click', showHallOfFame);
+  $('#hof-close').addEventListener('click', () => { $('#hof').hidden = true; });
+  $('#hof-share').addEventListener('click', shareResult);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#hof').hidden) $('#hof').hidden = true; });
 
   // ---------------- Help ----------------
   function openHelp(tab) {

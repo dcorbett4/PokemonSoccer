@@ -3184,6 +3184,11 @@
     openLive(src === 'national' ? C.national : C.result, +mi, {});
   }, true);
 
+  // Keep the header's real height in a CSS variable (sticky elements on phones sit just below it).
+  const syncTopbarH = () => document.documentElement.style.setProperty('--topbar-h', $('.topbar').offsetHeight + 'px');
+  window.addEventListener('resize', syncTopbarH);
+  syncTopbarH();
+
   // ---------------- Light / dark theme ----------------
   // No saved choice = follow the system setting. The toggle flips to the opposite of what's showing.
   const sysDark = () => matchMedia('(prefers-color-scheme: dark)').matches;

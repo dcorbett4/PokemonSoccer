@@ -615,3 +615,12 @@ button.award:hover { background: var(--surface-2); }
 .daily-past .label { margin-bottom: 4px; }
 .s-great { color: var(--stat-great) !important; } .s-good { color: var(--stat-good) !important; }
 .ch-actions:has(#ch-auto[hidden]) { grid-template-columns: 1fr; }
+
+/* Column labels stay pinned while the Pokémon list scrolls. */
+.opt-head { position: sticky; top: 0; z-index: 2; background: var(--bg); padding-top: 6px; user-select: none; -webkit-user-select: none; border-bottom: 1px solid var(--rule); }
+.opt-head + .pk { border-top: 0; }
+@media (max-width: 900px) {
+  /* On phones the list scrolls with the page, so the labels pin just below the site header. */
+  .options { overflow: visible; }
+  .options .opt-head { top: var(--topbar-h, 97px); }
+}

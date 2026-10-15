@@ -533,7 +533,7 @@
     const el = e.target.closest('.player');
     if (!el || e.button > 0 || S.view === 'records') return;
     if (isRun()) {
-      if (el.classList.contains('placeable')) placePick(+el.dataset.slot);
+      if (el.classList.contains('placeable') && !autoDrafting) placePick(+el.dataset.slot);
       return;
     }
     drag = { el, slot: +el.dataset.slot, x: e.clientX, y: e.clientY, started: false, target: null, ghost: null };
@@ -901,7 +901,7 @@
     rolling = true;
     render();
     const run = C;
-    const maxGen = C.mode !== 'regions' && C.pool === 'retro' ? 4 : 9, dur = 1100, t0 = performance.now();
+    const maxGen = C.mode !== 'regions' && C.pool === 'retro' ? 4 : 9, dur = autoDrafting ? 320 : 1100, t0 = performance.now();
     const tick = () => {
       const t = performance.now() - t0;
       if (t >= dur || C !== run || !isRun() || C.phase !== 'draft') {
@@ -913,7 +913,7 @@
         return;
       }
       $('#ch-roll').innerHTML = rollChips(1 + rand(maxGen), TYPES[rand(TYPES.length)], 'spin');
-      rollTimer = setTimeout(tick, 45 + Math.pow(t / dur, 2) * 190);
+      rollTimer = setTimeout(tick, 45 + Math.pow(t / dur, 2) * (autoDrafting ? 50 : 190));
     };
     tick();
   }
@@ -966,7 +966,9 @@
       $('#ch-round').textContent = `Round ${C.round + 1} / 11`;
       $('#ch-leg').textContent = `Legendaries ${C.legUsed} / 3`;
       $('#ch-reroll').textContent = `🎲 Reroll (${C.rerolls})`;
-      $('#ch-reroll').disabled = C.rerolls <= 0 || rolling;
+      $('#ch-reroll').disabled = C.rerolls <= 0 || rolling || autoDrafting;
+      $('#ch-auto').disabled = autoDrafting;
+      $('#ch-auto').textContent = autoDrafting ? '🎲 Auto-drafting…' : '🎲 Auto-draft the rest';
       const opts = $('#ch-options');
       opts.classList.toggle('veiled', rolling);
       if (rolling) {
@@ -1005,7 +1007,37 @@
   $('#ch-pool-seg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; C.pool = b.dataset.v; render(); });
   $('#ch-formation-seg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; C.f = b.dataset.v; render(); });
   $('#ch-start').addEventListener('click', () => beginRun());
+  $('#ch-random').addEventListener('click', () => { beginRun(); autoDraft(); });
+  $('#ch-auto').addEventListener('click', autoDraft);
+
+  // Random team: keep taking a random available Pokémon from each roll and dropping it into a random
+  // open spot. Rolls still come from the run's seed, so Dailies and challenges stay fair.
+  let autoDrafting = false;
+  async function autoDraft() {
+    if (C.phase !== 'draft' || autoDrafting) return;
+    autoDrafting = true;
+    render();
+    const run = C, wait = (ms) => new Promise((r) => setTimeout(r, REDUCE ? 0 : ms));
+    try {
+      while (C === run && C.phase === 'draft' && isRun()) {
+        if (rolling || !C.roll) { await wait(50); continue; }
+        const choices = C.roll.ids.filter((id) => !C.xi.includes(id) && (!BY_ID.get(id).leg || C.legUsed < 3));
+        if (!choices.length) break;
+        C.pick = choices[Math.floor(Math.random() * choices.length)];
+        render();
+        await wait(180);
+        if (C !== run || C.phase !== 'draft') break;
+        const open = C.xi.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0);
+        placePick(open[Math.floor(Math.random() * open.length)]);
+      }
+    } finally {
+      autoDrafting = false;
+      render();
+    }
+  }
+
   $('#ch-options').addEventListener('click', (e) => {
+    if (autoDrafting) return;
     const b = e.target.closest('.pk'); if (!b || b.disabled) return;
     C.pick = +b.dataset.id; render();
   });

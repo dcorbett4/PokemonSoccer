@@ -5,22 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Pokémon Starting XI</title>
   <meta name="description" content="Draft your 11-player soccer lineup from Pokémon. Pick a formation, swap players, and share your Starting XI." />
+  <meta name="color-scheme" content="light dark" />
+  <script>
+    // Apply a saved light/dark choice before first paint (otherwise the system setting is used).
+    try { var t = JSON.parse(localStorage.getItem('pxi.settings') || '{}').theme; if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&family=Pixelify+Sans:wght@700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=22026bb551" />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Pixelify+Sans:wght@700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=d8ec70ec0b" />
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-inner">
-      <div class="brand"><span class="brand-ball">⚽</span><span>Pokémon <b>Starting XI</b></span></div>
+      <div class="brand">
+        <svg class="brand-mark" width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect x="1" y="1" width="28" height="28" rx="3"></rect><line x1="15" y1="1" x2="15" y2="29"></line><circle cx="15" cy="15" r="5"></circle></svg>
+        <span class="brand-text"><span class="brand-kicker">POKÉMON</span><span class="brand-name">STARTING XI</span></span>
+      </div>
       <nav class="modes" aria-label="Game modes">
-        <button class="mode-btn mode-challenge" data-view="challenge"><span class="mi">🏆</span><span class="ml">38–0 Challenge</span><span class="ms">38–0</span></button>
-        <button class="mode-btn mode-regions" data-view="regions"><span class="mi">🌍</span><span class="ml">Region League</span><span class="ms">Regions</span></button>
-        <button class="mode-btn mode-builder" data-view="builder"><span class="mi">⚽</span><span class="ml">XI Builder</span><span class="ms">Builder</span></button>
-        <button class="mode-btn mode-records" data-view="records"><span class="mi">📊</span><span class="ml">Records</span><span class="ms">Records</span></button>
+        <button class="mode-btn" data-view="challenge"><span class="ml">38–0 Challenge</span><span class="ms">38–0</span></button>
+        <button class="mode-btn" data-view="regions"><span class="ml">Region League</span><span class="ms">Regions</span></button>
+        <button class="mode-btn" data-view="builder"><span class="ml">Builder</span><span class="ms">Builder</span></button>
+        <button class="mode-btn" data-view="records"><span class="ml">Records</span><span class="ms">Records</span></button>
       </nav>
-      <button class="help-btn" id="help-open" title="How to play (?)"><span>❓</span><span class="ml">How to play</span></button>
+      <div class="topbar-tools">
+        <button class="icon-btn theme-btn" id="theme-toggle" aria-label="Switch to dark mode" title="Light / dark">
+          <svg class="i-moon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg>
+          <svg class="i-sun" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5"></circle><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"></path></svg>
+        </button>
+        <button class="help-btn" id="help-open" title="How to play (?)"><span class="hb-q" aria-hidden="true">?</span><span class="ml">How to play</span></button>
+      </div>
     </div>
   </header>
 
@@ -29,17 +43,20 @@
 
       <!-- ============ BUILDER PANEL ============ -->
       <section id="builder-panel" class="panel">
-        <h1><span class="accent">XI</span> Builder</h1>
-        <p class="lede">Draft your 11-player soccer lineup from Pokémon. Tap a player to swap them out, or drag one onto another to switch spots. Save the image of your lineup and share it with friends.</p>
+        <div class="panel-head">
+          <span class="kicker">Free play</span>
+          <h1>XI Builder</h1>
+          <p class="lede">Build your 11-player lineup from Pokémon. Tap a player to swap them out, or drag one onto another to switch spots. Save the image and share it with friends.</p>
+        </div>
 
-        <button id="btn-download" class="btn btn-primary">⤓ Download image</button>
+        <button id="btn-download" class="btn btn-primary">Download image</button>
         <div class="btn-grid three">
-          <button id="btn-copy" class="btn">🔗 Link</button>
-          <button id="btn-random" class="btn">🔀 Random</button>
-          <button id="btn-reset" class="btn">★ Best XI</button>
-          <button id="btn-undo" class="btn" title="Undo (⌘/Ctrl+Z)">↶ Undo</button>
-          <button id="btn-redo" class="btn" title="Redo (⇧⌘/Ctrl+Shift+Z)">↷ Redo</button>
-          <button id="btn-clear" class="btn">🗑 Clear</button>
+          <button id="btn-copy" class="btn">Copy link</button>
+          <button id="btn-random" class="btn">Random</button>
+          <button id="btn-reset" class="btn">Best XI</button>
+          <button id="btn-undo" class="btn" title="Undo (⌘/Ctrl+Z)">Undo</button>
+          <button id="btn-redo" class="btn" title="Redo (⇧⌘/Ctrl+Shift+Z)">Redo</button>
+          <button id="btn-clear" class="btn">Clear</button>
         </div>
 
         <div class="label-row"><span class="label">Formation</span></div>
@@ -62,14 +79,17 @@
 
       <!-- ============ CHALLENGE PANEL ============ -->
       <section id="challenge-panel" class="panel" hidden>
-        <h1><span class="gold" id="ch-mode-title">38–0 Challenge</span></h1>
-        <p class="lede" id="ch-lede">Each round rolls a region and a type. Draft a matching Pokémon (up to 3 Legendaries) into any open spot, fill all 11, then play a 38-game league season. Can you go 38–0?</p>
+        <div class="panel-head">
+          <span class="kicker" id="ch-kicker">Draft mode</span>
+          <h1 id="ch-mode-title">38–0 Challenge</h1>
+          <p class="lede" id="ch-lede">Each round rolls a region and a type. Draft a matching Pokémon (up to 3 Legendaries) into any open spot, fill all 11, then play a 38-game league season. Can you go 38–0?</p>
+        </div>
 
         <div class="card-box daily-box" id="daily-box" hidden>
-          <div class="round-row"><div class="box-title" id="daily-title">📅 Daily Challenge</div><span class="muted small-text" id="daily-next"></span></div>
+          <div class="round-row"><div class="box-title" id="daily-title">Daily Challenge</div><span class="muted small-text" id="daily-next"></span></div>
           <p class="muted small-text" id="daily-desc"></p>
-          <button id="daily-play" class="btn btn-gold">▶ Play today's Daily</button>
-          <button id="daily-share" class="btn wide" hidden>📤 Share today's result</button>
+          <button id="daily-play" class="btn btn-gold">Play today's Daily</button>
+          <button id="daily-share" class="btn wide" hidden>Share today's result</button>
         </div>
 
         <div id="ch-setup">
@@ -89,43 +109,47 @@
             <span class="sublabel">Formation</span>
             <div class="seg seg-wrap" id="ch-formation-seg"></div>
             <button id="ch-start" class="btn btn-gold">Start run</button>
-            <button id="ch-random" class="btn wide" title="Draft all 11 automatically">🎲 Random team</button>
+            <button id="ch-random" class="btn wide" title="Draft all 11 automatically">Random team</button>
           </div>
         </div>
 
         <div id="ch-draft" hidden>
-          <div class="card-box">
+          <div class="draft-head">
             <div class="round-row">
-              <div class="box-title" id="ch-round">Round 1 / 11</div>
-              <div class="muted small-text" id="ch-leg">Legendaries 0 / 3</div>
+              <div class="round-title"><span class="rt-n" id="ch-round">Round 1</span><span class="rt-of">of 11</span></div>
             </div>
-            <div class="vs-banner" id="ch-vs" hidden></div>
+            <div class="progress" id="ch-progress" aria-hidden="true"></div>
+          </div>
+          <div class="vs-banner" id="ch-vs" hidden></div>
+          <div class="roll-block">
+            <span class="label">This round's roll</span>
             <div class="roll" id="ch-roll"></div>
-            <p class="muted small-text" id="ch-hint">Pick a Pokémon, then tap an open spot on the pitch.</p>
-            <div class="ch-actions">
-              <button id="ch-reroll" class="btn">🎲 Reroll (2)</button>
-              <button id="ch-quit" class="btn">✕ Abandon run</button>
-            </div>
-            <button id="ch-auto" class="btn wide" title="Fill the remaining spots automatically">🎲 Auto-draft the rest</button>
+            <span class="muted small-text" id="ch-leg">Legendaries 0 of 3</span>
           </div>
           <div class="options" id="ch-options"></div>
+          <p class="hint" id="ch-hint">Pick a Pokémon, then tap an open spot on the pitch.</p>
+          <div class="ch-actions">
+            <button id="ch-reroll" class="btn">Reroll (2)</button>
+            <button id="ch-auto" class="btn btn-gold" title="Fill the remaining spots automatically">Auto-draft the rest</button>
+          </div>
+          <button id="ch-quit" class="btn btn-text">Abandon run</button>
         </div>
 
         <div id="ch-ready" hidden>
           <div class="card-box">
-            <div class="box-title">Squad complete!</div>
+            <div class="box-title">Squad complete</div>
             <p class="muted small-text">Your XI is locked in. Did you put everyone in the right spot? Only one way to find out.</p>
-            <button id="ch-play" class="btn btn-gold">▶ Play the season</button>
+            <button id="ch-play" class="btn btn-gold">Play the season</button>
           </div>
         </div>
 
         <div id="ch-result" hidden>
-          <div class="card-box result-box" id="ch-result-box"></div>
-          <button id="ch-national" class="btn btn-gold" hidden>⛰️ Enter Victory Road</button>
-          <button id="ch-hof" class="btn btn-gold" hidden>🏆 Hall of Fame</button>
-          <button id="ch-share" class="btn wide" hidden>📤 Share result</button>
-          <button id="ch-challenge" class="btn wide" hidden>⚔️ Challenge a friend</button>
-          <button id="ch-again" class="btn btn-gold">New run</button>
+          <div class="result-box" id="ch-result-box"></div>
+          <button id="ch-national" class="btn btn-gold" hidden>Enter Victory Road</button>
+          <button id="ch-hof" class="btn btn-gold" hidden>Hall of Fame</button>
+          <button id="ch-share" class="btn btn-gold" hidden>Share result</button>
+          <button id="ch-challenge" class="btn wide" hidden>Challenge a friend</button>
+          <button id="ch-again" class="btn">New run</button>
         </div>
 
         <div class="stats-row">
@@ -140,13 +164,16 @@
 
       <!-- ============ RECORDS PANEL ============ -->
       <section id="records-panel" class="panel" hidden>
-        <h1><span class="pink">Records</span></h1>
-        <p class="lede">Every season you finish is saved here: trophies, all-time records, awards and your Pokémon's career stats. The pitch shows your All-Time XI.</p>
+        <div class="panel-head">
+          <span class="kicker">History</span>
+          <h1>Records</h1>
+          <p class="lede">Every season you finish is saved here: trophies, all-time records, awards and your Pokémon's career stats. The pitch shows your All-Time XI.</p>
+        </div>
         <div id="hist-body"></div>
         <div class="btn-grid three">
-          <button id="hist-export" class="btn" title="Download your history as a backup file">⤓ Export</button>
-          <button id="hist-import" class="btn" title="Load a history backup file">⤒ Import</button>
-          <button id="hist-clear" class="btn">🗑 Clear</button>
+          <button id="hist-export" class="btn" title="Download your history as a backup file">Export</button>
+          <button id="hist-import" class="btn" title="Load a history backup file">Import</button>
+          <button id="hist-clear" class="btn">Clear</button>
         </div>
         <input type="file" id="hist-file" accept="application/json,.json" hidden />
         <p class="muted small-text">History is saved in this browser only. Export a backup to move it to another device.</p>
@@ -174,22 +201,22 @@
         </div>
         <div class="bench" id="bench" hidden></div>
       </div>
+      <aside class="squad-sheet" id="squad-sheet" aria-label="Squad sheet" hidden></aside>
     </main>
   </div>
 
   <!-- Picker modal -->
   <div class="modal" id="picker" hidden>
-    <div class="modal-card">
+    <div class="modal-card picker-card">
       <div class="modal-head">
         <span class="pos-chip" id="picker-pos">ST</span>
         <h2 id="picker-title">Pick a Pokémon</h2>
         <button class="icon-btn" id="picker-close" aria-label="Close">✕</button>
       </div>
       <div class="modal-tools">
-        <input id="picker-search" type="search" placeholder="Search name, #, or type…" autocomplete="off" />
-        <select id="picker-sort">
+        <input id="picker-search" type="search" placeholder="Search name, # or type" autocomplete="off" aria-label="Search Pokémon" />
+        <select id="picker-sort" aria-label="Sort">
           <option value="dex">Sort: Dex #</option>
-          <option value="bst">Sort: Total</option>
           <option value="hp">Sort: HP</option>
           <option value="atk">Sort: Attack</option>
           <option value="def">Sort: Defense</option>
@@ -199,7 +226,7 @@
         </select>
         <button class="btn" id="picker-empty">Empty slot</button>
       </div>
-      <p class="muted small-text pad">Picking someone already in your squad swaps the two. You're the manager — use the base stats to decide who plays where.</p>
+      <p class="muted small-text pad">Picking someone already in your squad swaps the two. You're the manager: use the base stats to decide who plays where.</p>
       <div class="picker-grid" id="picker-grid"></div>
     </div>
   </div>
@@ -211,7 +238,7 @@
         <h2>How to play</h2>
         <button class="icon-btn" id="help-close" aria-label="Close">✕</button>
       </div>
-      <div class="seg small help-tabs" id="help-tabs">
+      <div class="tabs help-tabs" id="help-tabs">
         <button data-help="basics" class="on">Basics</button>
         <button data-help="builder">Builder</button>
         <button data-help="challenge">38–0</button>
@@ -225,16 +252,17 @@
           <p class="help-lead">Build a soccer team out of Pokémon. Pick who plays where, then see how they do over a full season.</p>
           <h3>Modes</h3>
           <div class="help-modes">
-            <div><b class="m-ch">▸ 38–0 Challenge</b><span>Draft a squad from random rolls, then try to win all 38 league games.</span></div>
-            <div><b class="m-rg">🌍 Region League</b><span>Draft mostly from your home region. Finish top 4 to reach Victory Road against the other regions.</span></div>
-            <div><b class="m-bu">⚽ XI Builder</b><span>Free play. Build any lineup you want and share it. No games are played.</span></div>
-            <div><b class="m-rc">📊 Records</b><span>Your trophies, all-time records, Pokémon career stats and every season you've finished.</span></div>
+            <div><b>38–0 Challenge</b><span>Draft a squad from random rolls, then try to win all 38 league games.</span></div>
+            <div><b>Region League</b><span>Draft mostly from your home region. Finish top 4 to reach Victory Road against the other regions.</span></div>
+            <div><b>Builder</b><span>Free play. Build any lineup you want and share it. No games are played.</span></div>
+            <div><b>Records</b><span>Your trophies, all-time records, Pokémon career stats and every season you've finished.</span></div>
           </div>
           <h3>The pitch</h3>
           <ul>
             <li>Your team attacks <b>up</b> the pitch: keeper at the bottom, strikers at the top.</li>
             <li>The label under each player is their position. Colours show the line: <b class="c-gk">GK</b> keeper, <b class="c-def">DEF</b> defence, <b class="c-mid">MID</b> midfield, <b class="c-fwd">FWD</b> attack.</li>
             <li>Hover (or long-press) a player to see their base stats.</li>
+            <li>Use the sun/moon button in the header to switch between light and dark mode.</li>
           </ul>
           <h3>Base stats</h3>
           <div class="help-stats">
@@ -242,7 +270,7 @@
             <span><b>Def</b> Physical defence</span><span><b>SpA</b> Special power</span>
             <span><b>SpD</b> Special defence</span><span><b>Spe</b> Speed</span>
           </div>
-          <p class="muted">Cards also show the <b>total</b> of all six stats in the top-left corner. Colours: <b style="color:#5ee08a">110+</b> elite, <b style="color:#f5c84c">80+</b> good, <b style="color:#c9ced6">55+</b> average.</p>
+          <p class="muted">Stat bars: <b class="t-great">110+</b> elite, <b class="t-good">80+</b> good, anything lower is average or weak.</p>
         </section>
 
         <section data-help="builder" hidden>
@@ -252,9 +280,9 @@
             <li><b>Drag one player onto another</b> to swap them. Picking someone already in your squad also swaps them.</li>
             <li><b>Formation</b> moves your players into a new shape. <b>Bench</b> adds 5 substitutes.</li>
             <li><b>Generation</b> limits the pool to one region (or all of them). <b>Legendaries</b> lets them in.</li>
-            <li><b>★ Best XI</b> fills the pitch with a strong default lineup. <b>🔀 Random</b> rolls a random one.</li>
+            <li><b>Best XI</b> fills the pitch with a strong default lineup. <b>Random</b> rolls a random one.</li>
             <li><b>Undo / Redo</b> (<kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd>) step through your changes.</li>
-            <li><b>⤓ Download image</b> saves a picture of your lineup. <b>🔗 Link</b> copies a link that opens this exact lineup.</li>
+            <li><b>Download image</b> saves a picture of your lineup. <b>Copy link</b> copies a link that opens this exact lineup.</li>
           </ul>
         </section>
 
@@ -264,26 +292,26 @@
           <ol>
             <li>Pick your <b>Pokémon pool</b> (all generations or Gen 1–4) and a <b>formation</b>. They're locked for the whole run.</li>
             <li>Each round rolls a <b>region</b> and a <b>type</b>. You can only pick Pokémon that match both.</li>
-            <li>Tap a Pokémon, then tap a <b>glowing open spot</b> on the pitch to place it. Placements are final.</li>
-            <li>You get <b>2 rerolls</b> per run and can use up to <b>3 Legendaries</b> (★).</li>
-            <li>In a hurry? <b>🎲 Random team</b> drafts all 11 for you, and <b>🎲 Auto-draft the rest</b> finishes a draft you've started. The auto-manager usually picks sensible fits and sometimes the very best, but don't expect perfection.</li>
+            <li>Tap a Pokémon, then tap a <b>highlighted open spot</b> on the pitch to place it. Placements are final.</li>
+            <li>You get <b>2 rerolls</b> per run and can use up to <b>3 Legendaries</b>.</li>
+            <li>In a hurry? <b>Random team</b> drafts all 11 for you, and <b>Auto-draft the rest</b> finishes a draft you've started. The auto-manager usually picks sensible fits and sometimes the very best, but don't expect perfection.</li>
           </ol>
           <h3>The season</h3>
           <ul>
             <li>You play 19 clubs home and away. Each club has its own squad of Pokémon, from weak to very strong.</li>
             <li>Watch it play out or hit <b>Skip</b>. Win = 3 points, draw = 1.</li>
-            <li><b>▶ Auto</b> plays the season through at your chosen speed (Slow, Normal, Fast or Turbo). <b>👆 Manual</b> reveals one match at a time: tap <b>Next match</b> or press <kbd>→</kbd>.</li>
+            <li><b>Auto</b> plays the season through at your chosen speed (Slow, Normal, Fast or Turbo). <b>Manual</b> reveals one match at a time: tap <b>Next match</b> or press <kbd>→</kbd>.</li>
             <li>Afterwards, check the <b>Squad</b>, <b>Team</b>, <b>Table</b>, <b>Awards</b> and <b>Games</b> tabs. Tap any club to see its squad and results.</li>
-            <li><b>📺 Watch live:</b> tap ▶ next to any game to watch it play out on the pitch with commentary, or turn on <b>Watch next match</b> during the season. Victory Road knockout games are offered live automatically.</li>
+            <li><b>Watch live:</b> tap ▶ next to any game to watch it play out on the pitch with commentary, or turn on <b>Watch next match</b> during the season. Victory Road knockout games are offered live automatically.</li>
             <li>Each of your players gets a <b>performance rating</b> for the season, based on what they actually did.</li>
           </ul>
           <p class="muted">A perfect 38–0 is extremely rare. Even an elite squad pulls it off only about 1 run in 70.</p>
-          <h3>📅 Daily Challenge</h3>
+          <h3>Daily Challenge</h3>
           <ul>
             <li>Everyone gets the <b>same rolls and formation</b> each day, with <b>one attempt</b>. A new Daily starts at midnight.</li>
             <li>Share your result as an emoji grid of all 38 games and compare with friends.</li>
           </ul>
-          <h3>⚔️ Challenge a friend</h3>
+          <h3>Challenge a friend</h3>
           <ul>
             <li>After a 38–0 or Region League run, tap <b>Challenge a friend</b> to send a link. (Dailies already have everyone on the same rolls, so just share your result.)</li>
             <li>Your friend drafts from <b>your exact rolls</b> with the same formation and plays <b>the same league</b>, against the same clubs with the same luck in each fixture. Your squad stays hidden until they finish.</li>
@@ -295,16 +323,16 @@
           <p class="help-lead">Represent your home region, win its league, then take on the best of the others.</p>
           <ol>
             <li>Choose a <b>home region</b> and formation.</li>
-            <li>Draft as in the 38–0 Challenge, but <b>75% of rolls</b> come from your home region (marked 🏠).</li>
+            <li>Draft as in the 38–0 Challenge, but <b>75% of rolls</b> come from your home region (marked Home).</li>
             <li>Play a 38-game league against clubs named after towns in your region.</li>
-            <li><b>Finish top 4</b> to qualify for <b>⛰️ Victory Road</b>: 16 clubs from every region.</li>
+            <li><b>Finish top 4</b> to qualify for <b>Victory Road</b>: 16 clubs from every region.</li>
           </ol>
           <h3>Victory Road format</h3>
           <ul>
             <li><b>Group stage:</b> 4 groups of 4, home and away (6 games). Only the <b>group winner</b> goes through.</li>
-            <li><b>Final Four:</b> only the four group winners go through, to semi-finals and then a final at a neutral ground. Level after 90 minutes means extra time, then penalties.</li>
+            <li><b>Final Four:</b> the four group winners play semi-finals, then a final at a neutral ground. Level after 90 minutes means extra time, then penalties.</li>
             <li>Victory Road clubs are stronger than most regional clubs, so expect a tougher fight.</li>
-            <li>Win it all to enter the <b>🏆 Hall of Fame</b>.</li>
+            <li>Win it all to enter the <b>Hall of Fame</b>.</li>
           </ul>
         </section>
 
@@ -331,7 +359,7 @@
             <li>Types, team chemistry and the bench don't affect results.</li>
           </ul>
           <h3>Season ratings</h3>
-          <p>The coloured badge on each player after a season (<b style="color:#5ee08a">85+</b> / <b style="color:#f5c84c">75+</b> / <b style="color:#d6dbe3">65+</b> / <b style="color:#ef5b5b">below</b>) is earned from goals, assists, clean sheets, Man of the Match awards and how well the team did.</p>
+          <p>The badge on each player after a season (<b class="t-great">85+</b> / <b class="t-good">75+</b> / <b>65+</b> / <b class="t-bad">below</b>) is earned from goals, assists, clean sheets, Man of the Match awards and how well the team did.</p>
         </section>
 
         <section data-help="records" hidden>
@@ -345,7 +373,7 @@
           </ul>
           <h3>Sharing &amp; backups</h3>
           <ul>
-            <li><b>📤 Share result</b> (after a season) sends your result image and summary to friends.</li>
+            <li><b>Share result</b> (after a season) sends your result image and summary to friends.</li>
             <li>History is saved <b>in this browser only</b>. Use <b>Export</b> to back it up and <b>Import</b> to restore it on another device.</li>
           </ul>
         </section>
@@ -358,6 +386,7 @@
     <div class="live-card">
       <div class="live-top">
         <span class="live-stage" id="live-stage">Matchday</span>
+        <span class="live-tag"><i></i>Live replay</span>
         <button class="icon-btn" id="live-close" aria-label="Close">✕</button>
       </div>
       <div class="live-board">
@@ -365,16 +394,31 @@
         <div class="lb-mid"><span class="lb-score" id="live-score">0 – 0</span><span class="lb-clock" id="live-clock">0'</span></div>
         <div class="lb-team away"><span class="lb-name" id="live-aname"></span><span class="lb-dot"></span></div>
       </div>
-      <div class="live-wrap" id="live-wrap">
-        <canvas id="live-canvas"></canvas>
-        <div class="live-overlay" id="live-overlay" hidden></div>
+      <div class="live-body">
+        <div class="live-main">
+          <div class="live-wrap" id="live-wrap">
+            <canvas id="live-canvas"></canvas>
+            <div class="live-overlay" id="live-overlay" hidden></div>
+          </div>
+          <div class="live-controls">
+            <button class="play-btn" id="live-play" aria-label="Pause" title="Pause / play (space)">
+              <svg class="i-pause" width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><rect x="1" y="1" width="4" height="14"></rect><rect x="9" y="1" width="4" height="14"></rect></svg>
+              <svg class="i-play" width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M2 1 L13 8 L2 15 Z"></path></svg>
+            </button>
+            <div class="live-timeline" id="live-timeline">
+              <div class="lt-bar"><i class="lt-fill" id="live-fill"></i><span class="lt-marks" id="live-marks"></span></div>
+              <div class="lt-ticks" id="live-ticks"><span>0'</span><span>45'</span><span>90'</span></div>
+            </div>
+            <div class="seg small speed-seg" id="live-speed" role="group" aria-label="Speed"><button data-s="1" class="on">1×</button><button data-s="2">2×</button><button data-s="4">4×</button></div>
+            <button class="btn btn-text" id="live-skip">Skip to full time</button>
+          </div>
+        </div>
+        <aside class="live-side">
+          <div class="live-goals" id="live-goals"></div>
+          <div class="label">Commentary</div>
+          <div class="live-feed" id="live-feed"></div>
+        </aside>
       </div>
-      <div class="live-controls">
-        <button class="btn" id="live-play" title="Pause / play (space)">⏸</button>
-        <div class="seg small" id="live-speed"><button data-s="1" class="on">1×</button><button data-s="2">2×</button><button data-s="4">4×</button></div>
-        <button class="btn" id="live-skip">⏭ Full-time</button>
-      </div>
-      <div class="live-feed" id="live-feed"></div>
     </div>
   </div>
 
@@ -391,8 +435,8 @@
     <div class="hof-inner">
       <img id="hof-img" alt="Hall of Fame: your Victory Road champions" />
       <div class="hof-actions">
-        <button id="hof-share" class="btn btn-gold">📤 Share</button>
-        <button id="hof-close" class="btn">Continue</button>
+        <button id="hof-share" class="btn btn-gold">Share</button>
+        <button id="hof-close" class="btn btn-ghost">Continue</button>
       </div>
     </div>
   </div>
@@ -411,6 +455,6 @@
   <div class="toast" id="toast" hidden></div>
 
   <script src="data.js?v=a386ee55ba"></script>
-  <script src="app.js?v=457c85f928"></script>
+  <script src="app.js?v=90afa53788"></script>
 </body>
 </html>

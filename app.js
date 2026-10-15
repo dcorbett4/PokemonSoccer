@@ -24,12 +24,13 @@
 
   // Position definitions: which line they're on and how base stats map to a rating.
   // pow = the better of Atk/SpA, fin = the other one.
+  // `color` follows the light/dark theme (CSS variable); `hex` is for canvas drawing.
   const LINES = {
-    GK: { name: 'Goalkeeper', color: '#f5c84c' },
-    DEF: { name: 'Defense', color: '#6aa8ff' },
-    MID: { name: 'Midfield', color: '#5ee08a' },
-    FWD: { name: 'Attack', color: '#ff7a7a' },
-    SUB: { name: 'Bench', color: '#b9c0cc' },
+    GK: { name: 'Goalkeeper', color: 'var(--c-gk)', hex: '#8A6200' },
+    DEF: { name: 'Defense', color: 'var(--c-def)', hex: '#2C5D8F' },
+    MID: { name: 'Midfield', color: 'var(--c-mid)', hex: '#2F7A4B' },
+    FWD: { name: 'Attack', color: 'var(--c-fwd)', hex: '#B8401A' },
+    SUB: { name: 'Bench', color: 'var(--muted)', hex: '#6B6A62' },
   };
   const POS = {
     GK: { line: 'GK', w: { hp: 0.35, def: 0.3, spd: 0.35 } },
@@ -126,6 +127,7 @@
   }
   const lineOf = (pos) => (POS[pos] ? POS[pos].line : 'SUB');
   const posColor = (pos) => LINES[lineOf(pos)].color;
+  const posHex = (pos) => LINES[lineOf(pos)].hex;
 
   function spriteUrl(id, style) {
     if (style === 'art') return `${SPR}other/official-artwork/${id}.png`;
@@ -139,7 +141,6 @@
   }
   const imgTag = (id, style, cls = '') =>
     `<img class="${cls}" src="${spriteUrl(id, style)}" alt="" loading="lazy" draggable="false" onerror="this.onerror=null;this.src='${SPR}other/official-artwork/${id}.png'">`;
-  const typeDots = (p) => `<span class="types">${p.types.map((t) => `<i title="${t}" style="background:${TYPE_COLORS[t]}"></i>`).join('')}</span>`;
 
   function toast(msg) {
     const t = $('#toast');
@@ -196,10 +197,12 @@
     try { navigator.vibrate(ms); } catch { /* ignore */ }
   };
   const STAT_KEYS = [['hp', 'HP'], ['atk', 'Atk'], ['def', 'Def'], ['spa', 'SpA'], ['spd', 'SpD'], ['spe', 'Spe']];
-  const statCol = (v) => (v >= 110 ? '#5ee08a' : v >= 80 ? '#f5c84c' : v >= 55 ? '#c9ced6' : '#7d8593');
-  const bst = (p) => STAT_KEYS.reduce((t, [k]) => t + p.s[k], 0);
-  const statGrid = (p, hl) => `<span class="stats">${STAT_KEYS.map(([k, l]) =>
-    `<span class="${hl === k ? 'hl' : ''}"><em>${l}</em><b style="color:${statCol(p.s[k])}">${p.s[k]}</b></span>`).join('')}</span>`;
+  const statCol = (v) => (v >= 110 ? 'var(--win)' : v >= 80 ? 'var(--ink)' : 'var(--faint)');
+  // Six stat columns with a small bar under each (draft options, picker).
+  const statBars = (p, hl) => `<span class="sbars">${STAT_KEYS.map(([k]) =>
+    `<span class="sb${hl === k ? ' hl' : ''}"><b>${p.s[k]}</b><i><u style="width:${Math.min(100, Math.round(p.s[k] / 1.6))}%;background:${statCol(p.s[k])}"></u></i></span>`).join('')}</span>`;
+  const statHead = (extra = '') => `<div class="opt-head" aria-hidden="true"><span></span><span>POKÉMON</span><span class="sbars"><span>HP</span><span>ATK</span><span>DEF</span><span>SPA</span><span>SPD</span><span>SPE</span></span>${extra}</div>`;
+  const pkMeta = (p) => `#${String(p.id).padStart(3, '0')} · ${p.types.map(cap).join(' / ')}`;
   const statLine = (p) => `HP ${p.s.hp} · Atk ${p.s.atk} · Def ${p.s.def} · SpA ${p.s.spa} · SpD ${p.s.spd} · Spe ${p.s.spe}`;
   const cap = (s) => s[0].toUpperCase() + s.slice(1);
 
@@ -333,6 +336,19 @@
     b.style.setProperty('--rc', perfColor(v));
   }
 
+  function renderSquadSheet() {
+    const el = $('#squad-sheet');
+    const show = isRun() && (C.phase === 'draft' || C.phase === 'ready');
+    el.hidden = !show;
+    if (!show) return;
+    const f = FORMATIONS[C.f];
+    const n = C.xi.filter(Boolean).length;
+    el.innerHTML = `<span class="label">Squad sheet</span><ol>${f.map(([pos], i) => {
+      const id = C.xi[i];
+      return `<li class="${id ? 'filled' : 'empty'}"><span>${pos}</span><span>${id ? esc(BY_ID.get(id).name) : '—'}</span></li>`;
+    }).join('')}</ol><span class="ss-count">${n}<span> / 11 drafted</span></span>`;
+  }
+
   function renderPitch() {
     const sq = currentSquad();
     const f = FORMATIONS[sq.f];
@@ -455,6 +471,7 @@
     renderSpriteSegs();
     if (S.view === 'builder') { trackHistory(); renderBuilderPanel(); } else if (S.view === 'records') renderRecords(); else renderChallenge();
     renderPitch();
+    renderSquadSheet();
     saveAll();
   }
 
@@ -608,20 +625,19 @@
     if (q) {
       list = list.filter((p) => p.name.toLowerCase().includes(q) || String(p.id) === q.replace(/^0+/, '') || p.types.includes(q));
     }
-    const val = (p) => (sort === 'bst' ? bst(p) : p.s[sort]);
+    const val = (p) => p.s[sort];
     const rows = list.slice();
     if (sort !== 'dex') rows.sort((a, b) => val(b) - val(a) || a.id - b.id);
     const cur = getSlot(pickerSlot);
     const art = S.sprite === 'art' ? ' art' : '';
-    $('#picker-grid').innerHTML = rows.map((p) => {
+    $('#picker-grid').innerHTML = rows.length ? statHead('<span></span>') + rows.map((p) => {
       const at = findSlot(p.id);
-      const tag = at >= 0 ? `<span class="tag">${slotPos(at)}</span>` : '';
-      return `<button class="pk${art}${p.id === cur ? ' sel' : ''}" data-id="${p.id}" title="${p.types.map(cap).join(' / ')}">
-        <span class="bst${sort === 'bst' ? ' hl' : ''}" title="Base stat total">${bst(p)}</span>${tag}
+      return `<button class="pk${art}${p.id === cur ? ' sel' : ''}" data-id="${p.id}" title="${statLine(p)}">
         ${imgTag(p.id, S.sprite)}
-        <span class="no">#${String(p.id).padStart(3, '0')}</span><span class="n">${esc(p.name)}</span>${typeDots(p)}${statGrid(p, sort)}
-        ${p.leg ? '<span class="leg" title="Legendary">★</span>' : ''}</button>`;
-    }).join('') || '<p class="muted">No Pokémon match that search.</p>';
+        <span class="pk-main"><span class="n">${esc(p.name)}</span><span class="no">${pkMeta(p)}</span></span>
+        ${statBars(p, sort)}
+        <span>${at >= 0 ? `<span class="tag">${slotPos(at)}</span>` : p.leg ? '<span class="leg">LEG</span>' : ''}</span></button>`;
+    }).join('') : '<p class="muted">No Pokémon match that search.</p>';
   }
   $('#picker-search').addEventListener('input', renderPickerGrid);
   $('#picker-sort').addEventListener('change', () => { S.sort = $('#picker-sort').value; store.set('pxi.settings', S); renderPickerGrid(); });
@@ -636,6 +652,7 @@
   $('#picker-grid').addEventListener('click', (e) => {
     const b = e.target.closest('.pk'); if (!b) return;
     const id = +b.dataset.id;
+    if (!id) return;
     const at = findSlot(id);
     if (at >= 0) swapSlots(at, pickerSlot); else setSlot(pickerSlot, id);
     closePicker(); render();
@@ -679,14 +696,14 @@
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const ctx = c.getContext('2d');
-    ctx.fillStyle = '#0b0d10'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#F2EFE7'; ctx.fillRect(0, 0, W, H);
 
     // Header
-    ctx.fillStyle = '#eef1f5'; ctx.font = '800 54px Inter, sans-serif'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#15181C'; ctx.font = '800 64px "Barlow Condensed", sans-serif'; ctx.textBaseline = 'alphabetic';
     ctx.fillText('My Pokémon ', PX, 92);
     const w1 = ctx.measureText('My Pokémon ').width;
-    ctx.fillStyle = '#5ee08a'; ctx.fillText('Starting XI', PX + w1, 92);
-    ctx.fillStyle = '#8b93a1'; ctx.font = '600 26px Inter, sans-serif';
+    ctx.fillStyle = '#2F7A4B'; ctx.fillText('Starting XI', PX + w1, 92);
+    ctx.fillStyle = '#6B6A62'; ctx.font = '600 26px "IBM Plex Sans", sans-serif';
     const res = isRun() && (C.phase === 'result' || C.phase === 'national') && C.result ? C.result.me : null;
     const mode = C.mode === 'regions' ? `${REGION[C.home]} League` : '38–0 Challenge';
     const nat = res && C.national ? ` · Victory Road: ${NAT_LABEL[C.national.finish]}` : '';
@@ -696,7 +713,7 @@
     // Pitch
     ctx.save();
     roundRect(ctx, PX, PY, PW, PH, 24); ctx.clip();
-    for (let i = 0; i < 16; i++) { ctx.fillStyle = i % 2 ? '#46963f' : '#3f8a3a'; ctx.fillRect(PX, PY + (PH / 16) * i, PW, PH / 16 + 1); }
+    for (let i = 0; i < 16; i++) { ctx.fillStyle = i % 2 ? '#2F6B46' : '#2C6642'; ctx.fillRect(PX, PY + (PH / 16) * i, PW, PH / 16 + 1); }
     const ix = PX + PW * 0.035, iy = PY + PH * 0.035, iw = PW * 0.93, ih = PH * 0.93;
     ctx.strokeStyle = 'rgba(255,255,255,.82)'; ctx.lineWidth = 4;
     ctx.strokeRect(ix, iy, iw, ih);
@@ -739,29 +756,29 @@
       }
       if (id && rtg != null) {
         const rx = cx + size * 0.36, ry = cy - size * 0.5;
-        ctx.fillStyle = 'rgba(12,14,18,.92)';
+        ctx.fillStyle = '#15181C';
         ctx.beginPath(); ctx.arc(rx, ry, 22 * scale, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = perfColor(rtg); ctx.lineWidth = 3; ctx.stroke();
-        ctx.fillStyle = perfColor(rtg); ctx.font = `700 ${Math.round(19 * scale)}px "JetBrains Mono", monospace`;
+        ctx.strokeStyle = perfHex(rtg); ctx.lineWidth = 3; ctx.stroke();
+        ctx.fillStyle = perfHex(rtg); ctx.font = `700 ${Math.round(19 * scale)}px "IBM Plex Mono", monospace`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(rtg), rx, ry + 1);
         ctx.textBaseline = 'alphabetic';
       }
       const p = id ? BY_ID.get(id) : null;
       const name = p ? p.name.toUpperCase() : 'EMPTY';
-      ctx.font = `800 ${Math.round(22 * scale)}px Inter, sans-serif`;
+      ctx.font = `700 ${Math.round(25 * scale)}px "Barlow Condensed", sans-serif`;
       const nw = ctx.measureText(name).width;
       const pw = Math.max(nw + 28 * scale, 140 * scale), ph = 56 * scale;
-      ctx.fillStyle = 'rgba(12,14,18,.92)';
-      roundRect(ctx, cx - pw / 2, plateY, pw, ph, 12 * scale); ctx.fill();
-      ctx.textAlign = 'center'; ctx.fillStyle = p ? '#eef1f5' : '#8b93a1';
+      ctx.fillStyle = '#F2EFE7';
+      roundRect(ctx, cx - pw / 2, plateY, pw, ph, 4 * scale); ctx.fill();
+      ctx.textAlign = 'center'; ctx.fillStyle = p ? '#15181C' : '#6B6A62';
       ctx.fillText(name, cx, plateY + 25 * scale);
-      ctx.font = `700 ${Math.round(18 * scale)}px "JetBrains Mono", monospace`;
+      ctx.font = `700 ${Math.round(18 * scale)}px "IBM Plex Mono", monospace`;
       const label = pos + (ga ? '  ' + ga : '');
       const lw = ctx.measureText(label).width, pw2 = ctx.measureText(pos).width;
       ctx.textAlign = 'left';
-      ctx.fillStyle = posColor(pos);
+      ctx.fillStyle = posHex(pos);
       ctx.fillText(pos, cx - lw / 2, plateY + 47 * scale);
-      if (ga) { ctx.fillStyle = '#eef1f5'; ctx.fillText('  ' + ga, cx - lw / 2 + pw2, plateY + 47 * scale); }
+      if (ga) { ctx.fillStyle = '#15181C'; ctx.fillText('  ' + ga, cx - lw / 2 + pw2, plateY + 47 * scale); }
     }
 
     const allGames = res ? runGames() : null;
@@ -772,13 +789,13 @@
 
     if (sq.bench) {
       const by = PY + PH + 20;
-      ctx.fillStyle = '#12161b'; roundRect(ctx, PX, by, PW, benchH - 20, 20); ctx.fill();
-      ctx.fillStyle = '#8b93a1'; ctx.font = '800 18px Inter, sans-serif'; ctx.textAlign = 'left';
+      ctx.fillStyle = '#ECE8DD'; roundRect(ctx, PX, by, PW, benchH - 20, 20); ctx.fill();
+      ctx.fillStyle = '#6B6A62'; ctx.font = '800 18px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'left';
       ctx.fillText('SUBSTITUTES', PX + 20, by + 34);
       sq.subs.forEach((id, i) => drawPlayer(PX + (PW / 5) * (i + 0.5), by + 130, id, 'SUB', 0.82));
     }
 
-    ctx.textAlign = 'right'; ctx.fillStyle = '#8b93a1'; ctx.font = '700 22px Inter, sans-serif';
+    ctx.textAlign = 'right'; ctx.fillStyle = '#6B6A62'; ctx.font = '700 22px "IBM Plex Sans", sans-serif';
     ctx.fillText('Pokémon Starting XI', W - PX, H - 26);
     return c;
   }
@@ -816,7 +833,7 @@
 
   const NAT_STAGES = ['Group stage', 'Quarter-final', 'Semi-final', 'Runner-up', 'Champion'];
   // 'Quarter-final' only appears in saves from before Victory Road switched to a Final Four.
-  const NAT_LABEL = { 'Group stage': 'Out on Victory Road', 'Quarter-final': 'Quarter-finalists', 'Semi-final': 'Final Four', 'Runner-up': 'Runners-up', Champion: '🏆 Champions' };
+  const NAT_LABEL = { 'Group stage': 'Out on Victory Road', 'Quarter-final': 'Quarter-finalists', 'Semi-final': 'Final Four', 'Runner-up': 'Runners-up', Champion: 'Champions' };
 
   function newRun(mode) {
     return {
@@ -893,7 +910,8 @@
   let rolling = false, rollTimer = null;
   function rollChips(gen, type, cls = '') {
     const home = C.mode === 'regions' && gen === C.home;
-    return `<span class="chip region${home ? ' home' : ''} ${cls}">${home ? '🏠 ' : ''}${REGION[gen]} · Gen ${gen}</span><span class="chip ${cls}" style="background:${TYPE_COLORS[type]}">${cap(type)}</span>`;
+    return `<span class="r-region ${cls}">${REGION[gen]}</span><span class="r-sep ${cls}">/</span>`
+      + `<span class="r-type ${cls}"><i style="background:${TYPE_COLORS[type]}"></i>${cap(type)}</span>${home ? '<span class="r-home">HOME</span>' : ''}`;
   }
   function startRoll() {
     clearTimeout(rollTimer);
@@ -925,6 +943,7 @@
   function renderChallenge() {
     const R = C.mode === 'regions';
     $('#ch-mode-title').textContent = R ? 'Region League' : C.daily ? `Daily Challenge #${C.daily}` : '38–0 Challenge';
+    $('#ch-kicker').textContent = R ? `Draft mode · ${REGION[C.home]} · ${C.f}` : `Draft mode · ${C.f}${C.pool === 'retro' ? ' · Gen 1–4' : ''}`;
     $('#ch-lede').textContent = R
       ? `Pick a home region — 75% of your draft rolls come from there. Fill all 11, play a 38-game regional league, and finish top 4 to reach Victory Road against the best clubs from every other region. Win your group to make the Final Four.`
       : 'Each round rolls a region and a type. Draft a matching Pokémon (up to 3 Legendaries) into any open spot, fill all 11, then play a 38-game league season. Can you go 38–0?';
@@ -937,7 +956,7 @@
     $$('#ch-pool-seg button').forEach((b) => b.classList.toggle('on', b.dataset.v === C.pool));
     $$('#ch-formation-seg button').forEach((b) => b.classList.toggle('on', b.dataset.v === C.f));
     $$('#ch-home-grid button').forEach((b) => b.classList.toggle('on', +b.dataset.v === C.home));
-    $('#ch-play').textContent = R ? `▶ Play the ${REGION[C.home]} League` : '▶ Play the season';
+    $('#ch-play').textContent = R ? `Play the ${REGION[C.home]} League` : 'Play the season';
 
     if (R) {
       $('#st-k1').textContent = 'Victory Road titles'; $('#st-best').textContent = SR.titles;
@@ -954,21 +973,23 @@
     $('#ch-hof').hidden = !!seasonTimer || !(C.national && C.national.finish === 'Champion');
     // Dailies are already shared by everyone, so they don't get a challenge link.
     $('#ch-challenge').hidden = !!seasonTimer || !(C.phase === 'result' || C.phase === 'national') || !C.seed || !!C.daily;
-    $('#ch-challenge').textContent = C.vs ? '⚔️ Challenge someone else' : '⚔️ Challenge a friend';
+    $('#ch-challenge').textContent = C.vs ? 'Challenge someone else' : 'Challenge a friend';
     renderDaily();
     $('#ch-vs').hidden = !C.vs || C.phase === 'result' || C.phase === 'national';
-    if (C.vs) $('#ch-vs').innerHTML = `⚔️ Challenge from <b>${esc(C.vs.a.n)}</b>: beat ${resultLine(C.vs.a.r)}`;
+    if (C.vs) $('#ch-vs').innerHTML = `Challenge from <b>${esc(C.vs.a.n)}</b>: beat ${resultLine(C.vs.a.r)}`;
     $('#ch-share').hidden = !!seasonTimer || !(C.phase === 'result' || C.phase === 'national') || !C.result;
-    $('#ch-again').className = canGoNational ? 'btn wide' : 'btn btn-gold';
+    $('#ch-again').className = 'btn wide';
     $('#ch-again').textContent = canGoNational ? 'End run' : 'New run';
 
     if (C.phase === 'draft' && C.roll) {
-      $('#ch-round').textContent = `Round ${C.round + 1} / 11`;
-      $('#ch-leg').textContent = `Legendaries ${C.legUsed} / 3`;
-      $('#ch-reroll').textContent = `🎲 Reroll (${C.rerolls})`;
+      $('#ch-round').textContent = `Round ${C.round + 1}`;
+      $('#ch-progress').innerHTML = Array.from({ length: 11 }, (_, k) => `<i class="${k < C.round ? 'done' : k === C.round ? 'now' : ''}"></i>`).join('');
+      const eligible = C.roll.ids.filter((id) => !C.xi.includes(id)).length;
+      $('#ch-leg').textContent = `${eligible} eligible · ${C.rerolls} reroll${C.rerolls === 1 ? '' : 's'} left · Legendaries ${C.legUsed} of 3`;
+      $('#ch-reroll').textContent = `Reroll (${C.rerolls})`;
       $('#ch-reroll').disabled = C.rerolls <= 0 || rolling || autoDrafting;
       $('#ch-auto').disabled = autoDrafting;
-      $('#ch-auto').textContent = autoDrafting ? '🎲 Auto-drafting…' : '🎲 Auto-draft the rest';
+      $('#ch-auto').textContent = autoDrafting ? 'Auto-drafting…' : 'Auto-draft the rest';
       const opts = $('#ch-options');
       opts.classList.toggle('veiled', rolling);
       if (rolling) {
@@ -978,7 +999,7 @@
       }
       $('#ch-roll').innerHTML = rollChips(C.roll.gen, C.roll.type);
       $('#ch-hint').textContent = C.pick
-        ? `Now tap a glowing open spot to place ${BY_ID.get(C.pick).name}.`
+        ? `${BY_ID.get(C.pick).name} selected. Choose an open position on the pitch.`
         : 'Pick a Pokémon, then tap an open spot on the pitch.';
       const open = C.xi.map((v, i) => (v ? '' : i)).join('.');
       const art = S.sprite === 'art' ? ' art' : '';
@@ -989,14 +1010,15 @@
         return;
       }
       opts.dataset.key = okey;
-      opts.innerHTML = C.roll.ids.map((id, n) => {
+      opts.innerHTML = statHead() + C.roll.ids.map((id, n) => {
         const p = BY_ID.get(id);
         const owned = C.xi.includes(id);
         const locked = owned || (p.leg && C.legUsed >= 3);
-        return `<button class="pk deal${art}${C.pick === id ? ' sel' : ''}" data-id="${id}" style="--i:${Math.min(n, 24)}" title="${owned ? 'Already in your squad' : locked ? 'Legendary limit reached' : p.types.map(cap).join(' / ')}" ${locked ? 'disabled' : ''}>
-          <span class="bst" title="Base stat total">${bst(p)}</span>
-          ${imgTag(id, S.sprite)}<span class="n">${esc(p.name)}</span>${typeDots(p)}${statGrid(p)}
-          ${p.leg ? '<span class="leg" title="Legendary">★</span>' : ''}</button>`;
+        const note = owned ? 'In your squad' : p.leg ? (locked ? 'Legendary · limit reached' : 'Legendary') : '';
+        return `<button class="pk deal${art}${C.pick === id ? ' sel' : ''}" data-id="${id}" style="--i:${Math.min(n, 24)}" title="${statLine(p)}" ${locked ? 'disabled' : ''}>
+          ${imgTag(id, S.sprite)}
+          <span class="pk-main"><span class="n">${esc(p.name)}</span><span class="no">${note ? `<span class="leg">${note}</span> · ` : ''}${pkMeta(p)}</span></span>
+          ${statBars(p)}</button>`;
       }).join('');
     }
     if ((C.phase === 'result' || C.phase === 'national') && C.result && !seasonTimer) renderResult();
@@ -1103,7 +1125,7 @@
       label: (g, i) => `Matchday ${i + 1} / ${n}`,
       short: (g) => `MD${g.md}`,
       sub: (w, d) => `${w * 3 + d} pts`,
-      streak: (w, d, l) => (l === 0 && d === 0 ? '🔥 Perfect' : l === 0 ? '🛡️ Unbeaten' : ''),
+      streak: (w, d, l) => (l === 0 && d === 0 ? 'Perfect' : l === 0 ? 'Unbeaten' : ''),
       delay: (i, l) => (n - i <= 5 ? (l === 0 ? 420 : 220) : 85),
       onFinish: () => {
         const me = C.result.me;
@@ -1133,7 +1155,7 @@
       label: (g) => g.stage,
       short: (g) => g.short,
       sub: (w, d, l, gf, ga) => `GF ${gf} · GA ${ga}`,
-      streak: (w, d, l) => (l === 0 ? '🛡️ Unbeaten' : ''),
+      streak: (w, d, l) => (l === 0 ? 'Unbeaten' : ''),
       // Group games tick along; knockout ties get a dramatic pause.
       delay: (i) => (C.national.games[i] && !C.national.games[i].short.startsWith('G') ? 1100 : 380),
       onFinish: () => {
@@ -1159,11 +1181,11 @@
       <div class="ticker" id="lv-tick"><span class="muted">Kick-off…</span></div>
       <div class="form-strip">${games.map(() => '<i class="pending"></i>').join('')}</div>
       <div class="sim-ctl">
-        <div class="seg small" id="lv-mode"><button data-m="auto">▶ Auto</button><button data-m="manual">👆 Manual</button></div>
+        <div class="seg small" id="lv-mode"><button data-m="auto">Auto</button><button data-m="manual">Manual</button></div>
         <div class="seg small" id="lv-speed">${SIM_SPEEDS.map(([v, l]) => `<button data-s="${v}">${l}</button>`).join('')}</div>
         <button class="btn btn-gold wide" id="lv-next" hidden>Next match ▶</button>
       </div>
-      <div class="lv-actions">${cfg.res && cfg.res.clubs ? '<button class="btn" id="lv-watch">📺 Watch next match</button>' : ''}<button class="btn" id="lv-skip">Skip to the end ⏭</button></div>`;
+      <div class="lv-actions">${cfg.res && cfg.res.clubs ? '<button class="btn" id="lv-watch">Watch next match</button>' : ''}<button class="btn" id="lv-skip">Skip to the end</button></div>`;
     const cells = $$('.form-strip i', box);
     let i = 0, w = 0, d = 0, l = 0, gf = 0, ga = 0;
     const finish = () => {
@@ -1209,7 +1231,7 @@
     const watchBtnEl = $('#lv-watch', box);
     if (watchBtnEl) watchBtnEl.addEventListener('click', () => {
       watchNext = !watchNext;
-      watchBtnEl.textContent = watchNext ? '✓ Watching next match' : '📺 Watch next match';
+      watchBtnEl.textContent = watchNext ? 'Watching next match' : 'Watch next match';
       watchBtnEl.classList.toggle('on', watchNext);
     });
     // Before revealing a game, optionally pause and watch it live.
@@ -1218,7 +1240,7 @@
       const mi = cfg.res && cfg.res.clubs ? matchIndex(cfg.res, g) : -1;
       if (mi >= 0 && !REDUCE && (watchNext || (cfg.autoWatch && cfg.autoWatch(g)))) {
         watchNext = false;
-        if (watchBtnEl) { watchBtnEl.textContent = '📺 Watch next match'; watchBtnEl.classList.remove('on'); }
+        if (watchBtnEl) { watchBtnEl.textContent = 'Watch next match'; watchBtnEl.classList.remove('on'); }
         openLive(cfg.res, mi, { fromPlayback: true, onClose: () => { if (skipPlayback === finish) reveal(); } });
         return;
       }
@@ -1236,7 +1258,7 @@
       $('#lv-pts', box).textContent = cfg.sub(w, d, l, gf, ga);
       const t = $('#lv-tick', box);
       t.innerHTML = `<span class="muted">${cfg.short(g)}</span> ${g.home ? 'vs' : '@'} ${esc(g.opp)}${g.oppRegion ? ` <span class="muted">(${REGION[g.oppRegion]})</span>` : ''} <b class="${cr}">${scoreText(g)}</b>`
-        + (g.goals && g.goals.length ? `<div class="scorers">⚽ ${scorerText(g, false)}</div>` : '');
+        + (g.goals && g.goals.length ? `<div class="scorers">${scorerText(g, false)}</div>` : '');
       liveUpTo = i + 1;
       renderPitch();
       t.classList.remove('in'); void t.offsetWidth; t.classList.add('in');
@@ -1483,7 +1505,8 @@
       return clamp(Math.round(v + team), 40, 99);
     });
   }
-  const perfColor = (v) => (v >= 85 ? '#5ee08a' : v >= 75 ? '#f5c84c' : v >= 65 ? '#d6dbe3' : '#ef5b5b');
+  const perfColor = (v) => (v >= 85 ? 'var(--r-great)' : v >= 75 ? 'var(--r-good)' : v >= 65 ? 'var(--r-ok)' : 'var(--r-bad)');
+  const perfHex = (v) => (v >= 85 ? '#4FAE72' : v >= 75 ? '#E8B64C' : v >= 65 ? '#C9C5BA' : '#EE6A3E'); // canvas (dark badge)
 
   // Every player in a competition with their season numbers (cached per result object).
   const playersCache = new WeakMap();
@@ -1539,12 +1562,12 @@
     const pr = perfRatings(games);
     const rows = FORMATIONS[C.f].map(([pos], i) => ({ i, pos, rtg: pr[i], ...st[i] }));
     const top = (k) => rows.reduce((b, r) => (r[k] > b[k] ? r : b), rows[0]);
-    const award = (icon, lbl, r, v) => (r && r[v] > 0 ? `<div class="award"><span>${icon}</span><div><small>${lbl}</small><b>${esc(slotName(r.i))}</b></div><em>${r[v]}</em></div>` : '');
+    const award = (icon, lbl, r, v) => (r && r[v] > 0 ? `<div class="award">${imgTag(C.xi[r.i], 'pixel')}<div><small>${lbl}</small><b>${esc(slotName(r.i))}</b></div><em>${r[v]}</em></div>` : '');
     const gk = rows.find((r) => r.pos === 'GK');
     rows.sort((a, b) => b.rtg - a.rtg || (b.g + b.a) - (a.g + a.a) || a.i - b.i);
     return `<div class="awards">
-        ${award('👟', 'Golden Boot', top('g'), 'g')}${award('🎯', 'Top Assists', top('a'), 'a')}
-        ${award('⭐', label, top('rtg'), 'rtg')}${award('🧤', 'Golden Glove', gk, 'cs')}
+        ${award('', 'Golden Boot', top('g'), 'g')}${award('', 'Top Assists', top('a'), 'a')}
+        ${award('', label, top('rtg'), 'rtg')}${award('', 'Golden Glove', gk, 'cs')}
       </div>
       <div class="table-wrap"><table class="league squad">
       <tr><th class="team">Player</th><th title="Performance rating">RTG</th><th>G</th><th>A</th><th>G+A</th><th title="Clean sheets">CS</th><th title="Man of the match">MOTM</th></tr>
@@ -1565,11 +1588,11 @@
   function awardsBody(res) {
     if (!res.clubs) return '<p class="muted small-text">League-wide awards are tracked for seasons played from now on.</p>';
     const A = compAwards(res);
-    const card = (icon, lbl, p, v) => (p && p[v] > 0 ? `<button class="award${p.me ? ' mine' : ''}"${clubAttr(res, p.ci)}><span>${icon}</span><div><small>${lbl}</small><b>${pkName(p.id)}</b><i>${esc(p.club)}</i></div><em>${p[v]}</em></button>` : '');
+    const card = (icon, lbl, p, v) => (p && p[v] > 0 ? `<button class="award${p.me ? ' mine' : ''}"${clubAttr(res, p.ci)}>${imgTag(p.id, 'pixel')}<div><small>${lbl}</small><b>${pkName(p.id)}</b><i>${esc(p.club)}</i></div><em>${p[v]}</em></button>` : '');
     const row = (p, cells) => `<tr class="clickable${p.me ? ' me' : ''}"${clubAttr(res, p.ci)}>${cells}</tr>`;
     return `<div class="awards">
-        ${card('👟', 'Golden Boot', A.boot, 'g')}${card('🎯', 'Top Assists', A.assists, 'a')}
-        ${card('⭐', res.national ? 'Player of the Tournament' : 'Player of the Season', A.pots, 'rtg')}${card('🧤', 'Golden Glove', A.glove, 'cs')}
+        ${card('', 'Golden Boot', A.boot, 'g')}${card('', 'Top Assists', A.assists, 'a')}
+        ${card('', res.national ? 'Player of the Tournament' : 'Player of the Season', A.pots, 'rtg')}${card('', 'Golden Glove', A.glove, 'cs')}
       </div>
       <div class="group-title">${res.national ? 'Team of the Tournament' : 'Team of the Season'}</div>
       <div class="table-wrap"><table class="league squad">
@@ -1585,16 +1608,16 @@
         ${A.assisters.map((p, i) => row(p, `<td>${i + 1}</td><td class="team">${pkName(p.id)}</td><td class="team muted club-cell">${esc(p.club)}</td><td><b>${p.a}</b></td><td>${p.g}G</td>`)).join('')}
       </table></div>`;
   }
-  const tabsHTML = (tabs) => `<div class="seg small result-tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${k === resultTab ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  const tabsHTML = (tabs) => `<div class="result-tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${k === resultTab ? 'on' : ''}">${l}</button>`).join('')}</div>`;
   const formStrip = (games) => `<div class="form-strip">${games.map((g) => `<i class="${cellRes(g)}" title="${esc(g.stage || 'MD' + g.md)} ${g.home ? 'vs' : '@'} ${esc(g.opp)} ${scoreText(g)}">${cellRes(g)}</i>`).join('')}</div>`;
 
   function renderResult() {
     const R = C.mode === 'regions';
     const showNat = R && C.national && resultComp === 'national';
     const compSwitch = R && C.national
-      ? `<div class="seg comp-switch"><button data-comp="league" class="${showNat ? '' : 'on'}">🏠 ${REGION[C.home]} League</button><button data-comp="national" class="${showNat ? 'on' : ''}">⛰️ Victory Road</button></div>`
+      ? `<div class="seg comp-switch"><button data-comp="league" class="${showNat ? '' : 'on'}">${REGION[C.home]} League</button><button data-comp="national" class="${showNat ? 'on' : ''}">Victory Road</button></div>`
       : '';
-    const vs = C.vs && C.result ? vsCard(C.vs, mySide(), true) + '<button class="btn btn-gold wide" data-act="reply">📤 Send your result back</button>' : '';
+    const vs = C.vs && C.result ? vsCard(C.vs, mySide(), true) + '<button class="btn btn-gold wide" data-act="reply">Send your result back</button>' : '';
     $('#ch-result-box').innerHTML = vs + compSwitch + (showNat ? nationalHTML() : leagueHTML());
   }
 
@@ -1602,18 +1625,18 @@
     const R = C.mode === 'regions';
     const { me, table, games } = C.result;
     let verdict;
-    if (me.w === 38) verdict = '🏆 PERFECT 38–0! Absolute legends.';
-    else if (me.l === 0) verdict = '🛡️ Unbeaten — The Invincibles!';
-    else if (me.position === 1) verdict = '🏆 League Champions!';
-    else if (me.position === 2) verdict = '🥈 Runners-up — so close!';
-    else if (me.position <= 4) verdict = '⭐ Top-four finish';
+    if (me.w === 38) verdict = 'A perfect 38–0';
+    else if (me.l === 0) verdict = 'The Invincibles';
+    else if (me.position === 1) verdict = 'League Champions';
+    else if (me.position === 2) verdict = 'Runners-up';
+    else if (me.position <= 4) verdict = 'Top-four finish';
     else if (me.position <= 17) verdict = 'Mid-table season';
     else verdict = '⬇️ Relegated…';
     let extra = '';
     if (R) {
       extra = me.position > 4 ? '<div class="sub">Missed out on Victory Road (top 4 qualify).</div>'
-        : C.national ? `<div class="sub qual">⛰️ Victory Road: <b>${NAT_LABEL[C.national.finish]}</b></div>`
-          : '<div class="sub qual">✅ Qualified for Victory Road!</div>';
+        : C.national ? `<div class="sub qual">Victory Road: <b>${NAT_LABEL[C.national.finish]}</b></div>`
+          : '<div class="sub qual">Qualified for Victory Road</div>';
     }
     if (!['squad', 'team', 'table', 'awards', 'matches'].includes(resultTab)) resultTab = 'squad';
     let body;
@@ -1646,7 +1669,7 @@
       body = squadBody(games, 'Player of the Season');
     }
     return `
-      <div class="box-title">${R ? `${REGION[C.home]} League` : 'Season result'}</div>
+      <div class="label">${R ? `${REGION[C.home]} League` : 'Season complete'}</div>
       <div class="record">${me.w}–${me.d}–${me.l}</div>
       <div class="sub">W–D–L · ${me.pts} pts · ${ord(me.position)} place</div>
       <div class="sub">GF ${me.gf} · GA ${me.ga} · GD ${sgn(me.gf - me.ga)}</div>
@@ -1660,7 +1683,7 @@
     const N = C.national, games = N.games;
     const rec = games.reduce((r, g) => { r[g.res]++; r.gf += g.gf; r.ga += g.ga; return r; }, { W: 0, D: 0, L: 0, gf: 0, ga: 0 });
     const verdict = {
-      Champion: '🏆 VICTORY ROAD CHAMPIONS!', 'Runner-up': '🥈 Beaten in the Final', 'Semi-final': 'Knocked out in the Final Four',
+      Champion: 'Victory Road Champions', 'Runner-up': 'Beaten in the Final', 'Semi-final': 'Knocked out in the Final Four',
       'Quarter-final': 'Knocked out in the Quarter-finals', 'Group stage': "Didn't make the Final Four",
     }[N.finish];
     if (!['squad', 'groups', 'bracket', 'awards', 'matches'].includes(resultTab)) resultTab = 'squad';
@@ -1692,7 +1715,7 @@
       body = squadBody(games, 'Player of the Tournament');
     }
     return `
-      <div class="box-title">⛰️ Victory Road</div>
+      <div class="label">Victory Road</div>
       <div class="record">${rec.W}–${rec.D}–${rec.L}</div>
       <div class="sub">W–D–L · GF ${rec.gf} · GA ${rec.ga} · GD ${sgn(rec.gf - rec.ga)}</div>
       <div class="verdict">${verdict}</div>
@@ -1725,7 +1748,7 @@
       const gi = res.groups.findIndex((t) => t.some((r) => r.ci === ci));
       const gpos = res.groups[gi].findIndex((r) => r.ci === ci) + 1;
       const last = res.matches.filter((m) => m.winner != null && (m.h === ci || m.a === ci)).pop();
-      const stage = res.champion === ci ? '🏆 Champions' : last ? (last.stage === 'Final' ? 'Runners-up' : last.stage === 'Semi-final' ? 'Final Four' : `Out in the ${last.stage}s`) : 'Out on Victory Road';
+      const stage = res.champion === ci ? 'Champions' : last ? (last.stage === 'Final' ? 'Runners-up' : last.stage === 'Semi-final' ? 'Final Four' : `Out in the ${last.stage}s`) : 'Out on Victory Road';
       standing = `Group ${'ABCD'[gi]} · ${ord(gpos)} · ${stage}`;
     } else {
       const row = res.table.find((t) => t.ci === ci);
@@ -1739,7 +1762,7 @@
       <div class="club-squad">${club.xi.map((id, i) => {
         const pos = FORMATIONS[club.f][i][0], p = BY_ID.get(id);
         return `<div class="cs-row" title="${statLine(p)}"><span class="ppos" style="color:${posColor(pos)}">${pos}</span>${imgTag(id, S.sprite, 'cs-img')}
-          <span class="cs-name">${esc(p.name)}${p.leg ? ' ★' : ''}</span><span class="cs-ga">${st[i].g}G ${st[i].a}A${POS[pos].line === 'GK' || POS[pos].line === 'DEF' ? ` · ${st[i].cs}CS` : ''}</span>
+          <span class="cs-name">${esc(p.name)}</span><span class="cs-ga">${st[i].g}G ${st[i].a}A${POS[pos].line === 'GK' || POS[pos].line === 'DEF' ? ` · ${st[i].cs}CS` : ''}</span>
           <b style="color:${perfColor(pr[i])}">${pr[i]}</b></div>`;
       }).join('')}</div>
       <div class="group-title">Results</div>
@@ -1831,8 +1854,8 @@
     const tile = (k, v) => `<div class="stat"><div class="stat-k">${k}</div><div class="stat-v">${v}</div></div>`;
     const myAward = (k) => HIST.reduce((t, e) => t + [e.awards, e.natAwards].filter((s) => s && s[k] && s[k].me).length, 0);
     const cabinet = `<div class="cabinet">
-      ${tile('Seasons', HIST.length)}${tile('🏆 League titles', n((e) => e.league.pos === 1))}${tile('⛰️ Victory Road titles', n((e) => e.nat && e.nat.finish === 'Champion'))}
-      ${tile('🛡️ Invincibles', n((e) => e.league.l === 0))}${tile('💯 Perfect 38–0', n((e) => e.league.w === 38))}${tile('👟 Golden Boots', myAward('boot'))}
+      ${tile('Seasons', HIST.length)}${tile('League titles', n((e) => e.league.pos === 1))}${tile('Victory Road titles', n((e) => e.nat && e.nat.finish === 'Champion'))}
+      ${tile('Invincibles', n((e) => e.league.l === 0))}${tile('Perfect 38–0', n((e) => e.league.w === 38))}${tile('Golden Boots', myAward('boot'))}
     </div>`;
 
     const maxBy = (arr, f) => arr.reduce((b, x) => (b == null || f(x) > f(b) ? x : b), null);
@@ -1859,16 +1882,16 @@
     cs.sort((x, y) => sorters[careerSort](y) - sorters[careerSort](x));
     const careerTable = `<div class="seg small" id="career-seg">${[['g', 'Goals'], ['a', 'Assists'], ['avg', 'Rating'], ['seasons', 'Seasons']].map(([k, l]) => `<button data-sort="${k}" class="${k === careerSort ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div class="table-wrap"><table class="league squad">
-        <tr><th>#</th><th class="team">Pokémon</th><th title="Seasons">S</th><th>G</th><th>A</th><th title="Average rating">RTG</th><th title="Awards won">🏅</th></tr>
+        <tr><th>#</th><th class="team">Pokémon</th><th title="Seasons">S</th><th>G</th><th>A</th><th title="Average rating">RTG</th><th title="Awards won">AWD</th></tr>
         ${cs.slice(0, 15).map((c, i) => `<tr><td>${i + 1}</td><td class="team"><span class="ppos" style="color:${LINES[c.line].color}">${c.line}</span>${pkName(c.id)}</td><td>${c.seasons}</td><td>${c.g}</td><td>${c.a}</td><td><b style="color:${perfColor(c.avg)}">${c.avg}</b></td><td>${c.awards || ''}</td></tr>`).join('')}
       </table></div>`;
 
-    const awardLine = (icon, lbl, a, suffix) => (a ? `<div class="kv wide${a.me ? ' mine' : ''}"><span>${icon} ${lbl}</span><b>${pkName(a.id)} <small>${esc(a.club)} · ${a.v}${suffix}</small></b></div>` : '');
+    const awardLine = (icon, lbl, a, suffix) => (a ? `<div class="kv wide${a.me ? ' mine' : ''}"><span>${lbl}</span><b>${pkName(a.id)} <small>${esc(a.club)} · ${a.v}${suffix}</small></b></div>` : '');
     const seasons = HIST.map((e) => {
       const L = e.league;
-      const natTxt = (e.nat ? ` · ⛰️ ${NAT_LABEL[e.nat.finish]}` : '')
-        + (e.vs ? ` · ⚔️ ${e.vs.res > 0 ? 'beat' : e.vs.res < 0 ? 'lost to' : 'tied'} ${esc(e.vs.n)}` : '');
-      const trophy = L.pos === 1 ? '🏆 ' : '';
+      const natTxt = (e.nat ? ` · VR: ${NAT_LABEL[e.nat.finish]}` : '')
+        + (e.vs ? ` · ${e.vs.res > 0 ? 'beat' : e.vs.res < 0 ? 'lost to' : 'tied'} ${esc(e.vs.n)}` : '');
+      const trophy = L.pos === 1 ? 'Champions · ' : '';
       return `<details class="season"><summary><span class="s-main">${trophy}${modeLabel(e)} <span class="muted">· ${e.f}</span></span>
           <span class="s-rec">${L.w}–${L.d}–${L.l} · ${ord(L.pos)}${natTxt}</span><span class="s-date muted">${dateLabel(e.date)}</span></summary>
         <div class="season-body">
@@ -1878,10 +1901,10 @@
             ${e.nat ? `<div class="kv"><span>Victory Road</span><b>${e.nat.w}–${e.nat.d}–${e.nat.l}</b></div><div class="kv"><span>VR winners</span><b>${esc(e.nat.champion)}</b></div>` : ''}
           </div>
           <div class="group-title">League awards</div>
-          ${awardLine('👟', 'Golden Boot', e.awards.boot, 'G')}${awardLine('🎯', 'Top Assists', e.awards.assists, 'A')}
-          ${awardLine('⭐', 'Player of the Season', e.awards.pots, ' RTG')}${awardLine('🧤', 'Golden Glove', e.awards.glove, ' CS')}
+          ${awardLine('', 'Golden Boot', e.awards.boot, 'G')}${awardLine('', 'Top Assists', e.awards.assists, 'A')}
+          ${awardLine('', 'Player of the Season', e.awards.pots, ' RTG')}${awardLine('', 'Golden Glove', e.awards.glove, ' CS')}
           ${e.natAwards ? `<div class="group-title">Victory Road awards</div>
-            ${awardLine('👟', 'Golden Boot', e.natAwards.boot, 'G')}${awardLine('⭐', 'Player of the Tournament', e.natAwards.pots, ' RTG')}` : ''}
+            ${awardLine('', 'Golden Boot', e.natAwards.boot, 'G')}${awardLine('', 'Player of the Tournament', e.natAwards.pots, ' RTG')}` : ''}
           <div class="group-title">Your squad</div>
           <div class="table-wrap"><table class="league squad">
             <tr><th class="team">Player</th><th>RTG</th><th>G</th><th>A</th><th>CS</th></tr>
@@ -2098,7 +2121,7 @@
     keys.slice(0, Math.max(0, keys.length - 60)).forEach((k) => delete DAILY[k]);
     store.set('pxi.daily', DAILY);
   };
-  const resultLine = (r) => `${r.w}–${r.d}–${r.l} · ${r.pts} pts · ${ord(r.pos)}${r.vr ? ` · ⛰️ ${NAT_LABEL[r.vr].replace('🏆 ', '')}` : ''}`;
+  const resultLine = (r) => `${r.w}–${r.d}–${r.l} · ${r.pts} pts · ${ord(r.pos)}${r.vr ? ` · VR: ${NAT_LABEL[r.vr].replace('🏆 ', '')}` : ''}`;
 
   function dailyShareText() {
     const me = C.result.me, g = C.result.games;
@@ -2124,7 +2147,7 @@
     if (box.hidden) return;
     const d = dailyInfo(), entry = DAILY[d.key];
     const mins = Math.ceil((new Date(new Date().setHours(24, 0, 0, 0)) - new Date()) / 60000);
-    $('#daily-title').textContent = `📅 Daily Challenge #${d.no}`;
+    $('#daily-title').textContent = `Daily Challenge #${d.no}`;
     $('#daily-next').textContent = `Next in ${Math.floor(mins / 60)}h ${mins % 60}m`;
     if (entry && entry.done) {
       $('#daily-desc').innerHTML = `Today's result: <b>${esc(entry.done.line)}</b>`;
@@ -2238,7 +2261,7 @@
     const cmp = compareRes(me.r, them.r);
     const nm = esc(them.n);
     const vrRow = ch.m === 'regions' ? `<tr><td>Victory Road</td><td>${me.r.vr ? NAT_LABEL[me.r.vr] : '—'}</td><td>${them.r.vr ? NAT_LABEL[them.r.vr] : '—'}</td></tr>` : '';
-    const verdict = cmp > 0 ? '🏆 You win the challenge!' : cmp < 0 ? `😬 ${nm} wins the challenge` : '🤝 Dead heat!';
+    const verdict = cmp > 0 ? 'You win the challenge' : cmp < 0 ? `${nm} wins the challenge` : 'Dead heat';
     const youA = !meIsB;
     const name = (isA) => (isA === youA ? 'You' : nm);
     const leg = (l, homeIsA) => `${name(homeIsA)} <b>${l.gh}–${l.ga}</b> ${name(!homeIsA)}`;
@@ -2247,7 +2270,7 @@
     const pensTxt = h.pens ? ` · pens ${youA ? h.pens[0] : h.pens[1]}–${youA ? h.pens[1] : h.pens[0]}` : '';
     const squad = (x) => FORMATIONS[ch.f].map(([pos], i) => `<span><i style="color:${posColor(pos)}">${pos}</i>${pkName(x[i])}</span>`).join('');
     return `<div class="vs-card">
-      <div class="vs-head">⚔️ Challenge vs <b>${nm}</b>${ch.d ? ` <span class="muted">· Daily #${ch.d}</span>` : ''}</div>
+      <div class="vs-head">Challenge vs ${nm}${ch.d ? ` <span class="muted">· Daily #${ch.d}</span>` : ''}</div>
       <table class="vs-table">
         <tr><th></th><th>You</th><th>${nm}</th></tr>
         <tr><td>Record</td><td>${me.r.w}–${me.r.d}–${me.r.l}</td><td>${them.r.w}–${them.r.d}–${them.r.l}</td></tr>
@@ -2259,7 +2282,7 @@
       <div class="vs-verdict ${cmp > 0 ? 'win' : cmp < 0 ? 'lose' : ''}">${verdict}</div>
       <div class="vs-h2h"><div class="group-title">Head-to-head derby</div>
         <div>Leg 1: ${leg(h.l1, true)}</div><div>Leg 2: ${leg(h.l2, false)}</div>
-        <div class="vs-agg">Aggregate: You ${meAgg}–${themAgg} ${nm}${pensTxt} · ${derbyWin ? '✅ You win the derby' : `❌ ${nm} wins the derby`}</div>
+        <div class="vs-agg">Aggregate: You ${meAgg}–${themAgg} ${nm}${pensTxt} · ${derbyWin ? 'You win the derby' : `${nm} wins the derby`}</div>
       </div>
       <details class="vs-squads"><summary>Compare squads</summary>
         <div class="vs-cols"><div><div class="group-title">You</div>${squad(me.x)}</div><div><div class="group-title">${nm}</div>${squad(them.x)}</div></div>
@@ -2275,10 +2298,10 @@
 
   // Sender: build a challenge from the finished run.
   $('#ch-challenge').addEventListener('click', () => {
-    openVs(`<h2>⚔️ Challenge a friend</h2>
+    openVs(`<h2>Challenge a friend</h2>
       <p class="muted small-text">They'll draft from <b>your exact rolls</b> with the same formation${C.mode === 'regions' ? ' and home region' : ''}, then play <b>the same league</b>. Your squad stays hidden until they finish. Then you'll compare results and play a two-leg derby.</p>
       <label class="vs-label">Your name <input id="vs-name" maxlength="16" placeholder="e.g. Dylan" value="${esc(S.name || '')}" /></label>
-      <div class="vs-actions"><button id="vs-send" class="btn btn-gold">📤 Share challenge</button><button id="vs-copy" class="btn">🔗 Copy link</button></div>`);
+      <div class="vs-actions"><button id="vs-send" class="btn btn-gold">Share challenge</button><button id="vs-copy" class="btn">Copy link</button></div>`);
     const link = () => {
       S.name = $('#vs-name').value.trim().slice(0, 16);
       store.set('pxi.settings', S);
@@ -2316,7 +2339,7 @@
       return true;
     }
     const where = ch.m === 'regions' ? `${REGION[ch.h]} Region League` : ch.d ? `Daily #${ch.d}` : `38–0 Challenge${ch.p === 'retro' ? ' (Gen 1–4)' : ''}`;
-    openVs(`<h2>⚔️ ${esc(ch.a.n)} challenges you!</h2>
+    openVs(`<h2>${esc(ch.a.n)} challenges you</h2>
       <div class="vs-invite"><div><span class="muted">Mode</span><b>${where}</b></div><div><span class="muted">Formation</span><b>${ch.f}</b></div>
       <div><span class="muted">Score to beat</span><b>${resultLine(ch.a.r)}</b></div></div>
       <p class="muted small-text">You'll draft from the <b>same rolls</b> and play the <b>same league</b>. Their squad is revealed when you finish, plus a two-leg derby between your XIs.</p>
@@ -2343,7 +2366,7 @@
   const LV = { raf: 0, open: false };
   const MS_PER_MIN = 650;   // real ms per game minute at 1×
   const HOLD = { goal: 2600, ht: 1800, et: 1500, pen: 950 };
-  const TEAM_COLORS = { me: '#5ee08a', them: '#ff7a7a', home: '#6aa8ff', away: '#ff7a7a' };
+  const TEAM_COLORS = { me: '#F4F1EA', them: '#F07A4E', home: '#9EC5FF', away: '#F07A4E' };
 
   // Find a game's raw match index (older saves don't store it on the game).
   function matchIndex(res, g, ci = 0) {
@@ -2431,6 +2454,13 @@
     };
     LV.colors = [col(0), col(1)];
     $$('#live .lb-dot').forEach((d, i) => { d.style.background = LV.colors[i]; });
+    // Timeline: goal markers along the match length, plus a goals summary in the side column.
+    const endMin = S0.end, mk = (team) => (team === 0 ? S0.m.eh : S0.m.ea) || [];
+    $('#live-marks').innerHTML = [0, 1].map((team) => mk(team).map((e) => `<i title="${esc(BY_ID.get(S0.clubs[team].xi[e.s]).name)} ${e.m}'" style="left:${(Math.min(e.m, endMin) / endMin) * 100}%;background:${team === 0 ? 'var(--ink)' : 'var(--accent)'}"></i>`).join('')).join('');
+    $('#live-ticks').innerHTML = S0.m.et ? "<span>0'</span><span>60'</span><span>120'</span>" : "<span>0'</span><span>45'</span><span>90'</span>";
+    $('#live-fill').style.width = '0%';
+    $('#live-goals').innerHTML = '';
+    $('#live-play').classList.remove('paused');
     $('#live-feed').innerHTML = '';
     LV.imgs = new Map();
     S0.clubs.forEach((c) => c.xi.forEach((id) => {
@@ -2457,6 +2487,11 @@
     if (cb) cb();
   }
 
+  function renderLiveGoals() {
+    const g = LV.goals || [[], []];
+    $('#live-goals').innerHTML = [0, 1].map((team) => `<div><span class="label">${esc(LV.S.clubs[team].name)}</span>${g[team].length ? g[team].map((x) => `<div><b>${esc(x)}</b></div>`).join('') : '<div class="muted">—</div>'}</div>`).join('');
+  }
+
   function resetMatch() {
     const S0 = LV.S;
     LV.st = {
@@ -2478,6 +2513,9 @@
     $('#live-clock').textContent = "0'";
     $('#live-overlay').hidden = true;
     $('#live-feed').innerHTML = '';
+    LV.goals = [[], []];
+    renderLiveGoals();
+    if ($('#live-fill')) $('#live-fill').style.width = '0%';
     kickoffShape(0);
   }
 
@@ -2596,7 +2634,9 @@
     if (ev.kind === 'goal') {
       st.score[team]++;
       $('#live-score').textContent = `${st.score[0]} – ${st.score[1]}`;
-      feed(`<b>${ev.min}'</b> ⚽ <b>GOAL!</b> ${who} scores for ${club}${ev.a != null ? ` <span class="muted">(assist ${esc(nameOf(team, ev.a))})</span>` : ''} · ${st.score[0]}–${st.score[1]}`, 'goal');
+      (LV.goals = LV.goals || [[], []])[team].push(`${nameOf(team, ev.s)} ${ev.min}'`);
+      renderLiveGoals();
+      feed(`<b>${ev.min}'</b>GOAL! ${who} scores for ${club}${ev.a != null ? ` <span class="muted">(assist ${esc(nameOf(team, ev.a))})</span>` : ''} · ${st.score[0]}–${st.score[1]}`, 'goal');
       startHold('goal', HOLD.goal, { text: 'GOAL!', sub: nameOf(team, ev.s), team });
       st.celebrate = { team, slot: ev.s };
       st.afterHold = () => kickoffShape(opp);
@@ -2652,6 +2692,7 @@
       }
     }
     if (!st.done) $('#live-clock').textContent = st.t >= S0.end ? (S0.m.pens ? 'Pens' : S0.m.et ? 'AET' : 'FT') : minLabel(st.t);
+    $('#live-fill').style.width = `${Math.min(100, (st.t / S0.end) * 100)}%`;
   }
 
   function beginAction(a) {
@@ -2702,7 +2743,7 @@
     const team = k.team;
     st.ball = { x: team === 0 ? 0.885 : 0.115, y: 0.5, h: 0 };
     st.shootout = { team, hit: k.hit, t0: performance.now() };
-    feed(`${k.hit ? '✅' : '❌'} ${esc(nameOf(team, k.taker))} ${k.hit ? 'scores' : 'is denied'} · pens ${st.pens[0]}–${st.pens[1]}`, k.hit ? '' : 'miss');
+    feed(`<b>PEN</b>${esc(nameOf(team, k.taker))} ${k.hit ? 'scores' : 'is denied'} · pens ${st.pens[0]}–${st.pens[1]}`, k.hit ? '' : 'miss');
     $('#live-score').textContent = `${st.score[0]} – ${st.score[1]} (${st.pens[0]}–${st.pens[1]})`;
     startHold('pen', HOLD.pen, { text: k.hit ? 'SCORED' : 'SAVED', sub: `${st.pens[0]} – ${st.pens[1]}`, small: true });
   }
@@ -2724,7 +2765,7 @@
     const list = (team) => S0.clubs[team].xi.map((id, i) => `<span><i style="color:${posColor(FORMATIONS[S0.clubs[team].f][i][0])}">${FORMATIONS[S0.clubs[team].f][i][0]}</i>${pkName(id)}</span>`).join('');
     ov.innerHTML = `<div class="lo-card">
       <div class="lo-stage">${esc(S0.stage)}</div>
-      <div class="lo-vs"><b style="color:${LV.colors[0]}">${esc(S0.clubs[0].name)}</b><span>vs</span><b style="color:${LV.colors[1]}">${esc(S0.clubs[1].name)}</b></div>
+      <div class="lo-vs"><b>${esc(S0.clubs[0].name)}</b><span>vs</span><b>${esc(S0.clubs[1].name)}</b></div>
       <div class="lo-lineups"><div><div class="group-title">${S0.clubs[0].f}</div>${list(0)}</div><div><div class="group-title">${S0.clubs[1].f}</div>${list(1)}</div></div>
       <div class="lo-actions"><button class="btn btn-gold" data-live="kickoff">▶ Kick off</button>${LV.opts.fromPlayback ? '<button class="btn" data-live="skip">Just show the score</button>' : ''}</div>
     </div>`;
@@ -2749,9 +2790,9 @@
     const fin = m.pens ? `Penalties ${m.pens[0]}–${m.pens[1]}` : m.et ? 'After extra time' : 'Full-time';
     ov.innerHTML = `<div class="lo-card">
       <div class="lo-stage">${fin}</div>
-      <div class="lo-score"><b style="color:${LV.colors[0]}">${esc(S0.clubs[0].name)}</b><span>${m.gh} – ${m.ga}</span><b style="color:${LV.colors[1]}">${esc(S0.clubs[1].name)}</b></div>
+      <div class="lo-score"><b>${esc(S0.clubs[0].name)}</b><span>${m.gh} – ${m.ga}</span><b>${esc(S0.clubs[1].name)}</b></div>
       <div class="lo-lineups"><div>${scorers(0)}</div><div>${scorers(1)}</div></div>
-      <div class="lo-motm">⭐ Man of the Match: <b>${esc(nameOf(mt, ms))}</b> <span class="muted">${esc(S0.clubs[mt].name)}</span></div>
+      <div class="lo-motm">Man of the Match: <b>${esc(nameOf(mt, ms))}</b> <span class="muted">${esc(S0.clubs[mt].name)}</span></div>
       <div class="lo-actions"><button class="btn" data-live="replay">↻ Replay</button><button class="btn btn-gold" data-live="close">${LV.opts.fromPlayback ? 'Continue season' : 'Close'}</button></div>
     </div>`;
     ov.hidden = false;
@@ -2787,13 +2828,13 @@
     const c = document.createElement('canvas');
     c.width = LV.W; c.height = LV.H;
     const g = c.getContext('2d');
-    g.fillStyle = '#2f6e2c'; g.fillRect(0, 0, LV.W, LV.H);
+    g.fillStyle = '#2C6642'; g.fillRect(0, 0, LV.W, LV.H);
     const rect = (x0, y0, x1, y1, fill) => {
       const [ax, ay] = P(x0, y0), [bx, by] = P(x1, y1);
       const x = Math.min(ax, bx), y = Math.min(ay, by), w = Math.abs(bx - ax), h = Math.abs(by - ay);
       if (fill) { g.fillStyle = fill; g.fillRect(x, y, w, h); } else g.strokeRect(x, y, w, h);
     };
-    for (let i = 0; i < 14; i++) rect(i / 14, 0, (i + 1) / 14, 1, i % 2 ? '#46963f' : '#3f8a3a');
+    for (let i = 0; i < 14; i++) rect(i / 14, 0, (i + 1) / 14, 1, i % 2 ? '#2F6B46' : '#2C6642');
     g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = Math.max(1.5, LV.dpr * 1.6);
     rect(0, 0, 1, 1);
     rect(0.5, 0, 0.5, 1);
@@ -3081,7 +3122,8 @@
     const st = LV.st;
     if (st.done || !$('#live-overlay').hidden) return;
     st.playing = !st.playing;
-    $('#live-play').textContent = st.playing ? '⏸' : '▶';
+    $('#live-play').classList.toggle('paused', !st.playing);
+    $('#live-play').setAttribute('aria-label', st.playing ? 'Pause' : 'Play');
   });
   $('#live-speed').addEventListener('click', (e) => {
     const b = e.target.closest('[data-s]');
@@ -3112,6 +3154,22 @@
     const [src, mi] = b.dataset.watch.split(':');
     openLive(src === 'national' ? C.national : C.result, +mi, {});
   }, true);
+
+  // ---------------- Light / dark theme ----------------
+  // No saved choice = follow the system setting. The toggle flips to the opposite of what's showing.
+  const sysDark = () => matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = () => (S.theme ? S.theme === 'dark' : sysDark());
+  function applyTheme() {
+    if (S.theme) document.documentElement.dataset.theme = S.theme; else delete document.documentElement.dataset.theme;
+    $('#theme-toggle').setAttribute('aria-label', isDark() ? 'Switch to light mode' : 'Switch to dark mode');
+  }
+  $('#theme-toggle').addEventListener('click', () => {
+    S.theme = isDark() ? 'light' : 'dark';
+    store.set('pxi.settings', S);
+    applyTheme();
+  });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (!S.theme) applyTheme(); });
+  applyTheme();
 
   // ---------------- Help ----------------
   function openHelp(tab) {

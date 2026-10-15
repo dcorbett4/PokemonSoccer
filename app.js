@@ -333,7 +333,7 @@
       el.appendChild(b);
     }
     b.textContent = v;
-    b.style.setProperty('--rc', perfColor(v));
+    b.style.setProperty('--rc', perfHex(v)); // bright set: the badge always sits on the green pitch
   }
 
   function renderSquadSheet() {
@@ -1506,7 +1506,7 @@
     });
   }
   const perfColor = (v) => (v >= 85 ? 'var(--r-great)' : v >= 75 ? 'var(--r-good)' : v >= 65 ? 'var(--r-ok)' : 'var(--r-bad)');
-  const perfHex = (v) => (v >= 85 ? '#4FAE72' : v >= 75 ? '#E8B64C' : v >= 65 ? '#C9C5BA' : '#EE6A3E'); // canvas (dark badge)
+  const perfHex = (v) => (v >= 85 ? '#7CF0A0' : v >= 75 ? '#FFD45E' : v >= 65 ? '#E6E1D5' : '#FF8A5C'); // on-pitch badges + canvas
 
   // Every player in a competition with their season numbers (cached per result object).
   const playersCache = new WeakMap();

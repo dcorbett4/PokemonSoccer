@@ -366,7 +366,7 @@ button.award:hover { background: var(--surface-2); }
 .locked .player { cursor: default; }
 .player .pop { animation: popIn 0.45s cubic-bezier(.3, 1.6, .5, 1) both; }
 @keyframes popIn { from { transform: scale(0.3); opacity: 0; } to { transform: none; opacity: 1; } }
-.player .perf { position: absolute; top: 0; right: 2cqw; min-width: 4.8cqw; height: 4.8cqw; padding: 0 0.7cqw; border-radius: 999px; display: grid; place-items: center; font-family: var(--mono); font-weight: 600; font-size: 2.1cqw; background: #15181C; color: #FAF8F3; box-shadow: 0 0 0 0.4cqw var(--rc); animation: popIn 0.45s cubic-bezier(.3, 1.6, .5, 1) both; }
+.player .perf { position: absolute; top: 0; right: 2cqw; min-width: 4.8cqw; height: 4.8cqw; padding: 0 0.7cqw; border-radius: 999px; display: grid; place-items: center; font-family: var(--mono); font-weight: 600; font-size: 2.1cqw; background: #15181C; color: #FAF8F3; box-shadow: 0 0 0 0.5cqw var(--rc); animation: popIn 0.45s cubic-bezier(.3, 1.6, .5, 1) both; }
 .drag-ghost { position: fixed; pointer-events: none; z-index: 100; transform: translate(-50%, -50%) scale(1.08); opacity: 0.95; }
 
 .bench { border-top: 1px solid var(--rule); padding-top: 8px; container-type: inline-size; }

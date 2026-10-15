@@ -2469,6 +2469,8 @@
     LV.phase = S0.clubs.map((c) => c.xi.map(() => Math.random() * 6.28));
     LV.agility = S0.clubs.map((c) => c.xi.map((id) => clamp(0.75 + BY_ID.get(id).s.spe / 220, 0.8, 1.45)));
     LV.clock = 0;
+    LV.counter = null;
+    LV.wander = S0.clubs.map((c) => c.xi.map(() => ({ x: 0, y: 0, next: Math.random() * 2000 })));
     $('#live-score').textContent = '0 – 0';
     $('#live-clock').textContent = "0'";
     $('#live-overlay').hidden = true;
@@ -2584,6 +2586,7 @@
   function finishAction(a) {
     const st = LV.st;
     if (a.type === 'pass') st.carrier = { ...a.to };
+    if (a.steal) LV.counter = { team: a.to.team, t: LV.clock };
     if (a.type !== 'shot') return;
     const ev = a.ev, team = ev.team, opp = 1 - team;
     const who = esc(nameOf(team, ev.s)), club = esc(LV.S.clubs[team].name);
@@ -2816,16 +2819,24 @@
     return [0, 1].map((team) => {
       const poss = st.carrier.team === team;
       const prog = team === 0 ? b.x : 1 - b.x; // how far the ball is toward this team's attacking goal
-      const shift = (prog - 0.45) * 0.6 + (poss ? 0.08 : -0.02);
+      const shift = (prog - 0.45) * 0.7 + (poss ? 0.09 : -0.03);
       const dir = team === 0 ? 1 : -1;
       const f = FORMATIONS[LV.S.clubs[team].f];
       return LV.anchors[team].map((a, i) => {
+        // Every few seconds each player picks a new spot near their position and jogs to it.
+        const wd = LV.wander[team][i];
+        if (tc >= wd.next) {
+          const rad = { GK: 0.015, DEF: 0.055, MID: 0.085, FWD: 0.1 }[POS[f[i][0]].line];
+          wd.x = (Math.random() * 2 - 1) * rad;
+          wd.y = (Math.random() * 2 - 1) * rad * 1.4;
+          wd.next = tc + 1000 + Math.random() * 2000;
+        }
         const pos = f[i][0], line = POS[pos].line, ph = LV.phase[team][i];
         let x, y;
         if (line === 'GK') {
           x = team === 0 ? 0.03 + clamp(b.x - 0.3, 0, 0.4) * 0.1 : 0.97 - clamp(0.7 - b.x, 0, 0.4) * 0.1;
-          y = 0.5 + (b.y - 0.5) * 0.35 + Math.sin(tc * 0.0011 + ph) * 0.01;
-          return { x, y };
+          y = 0.5 + (b.y - 0.5) * 0.35 + Math.sin(tc * 0.0011 + ph) * 0.012 + wd.y;
+          return { x: x + wd.x * 0.5, y };
         }
         x = a.x + dir * shift;
         // Shape breathes: wider with the ball, narrower and more compact without it.
@@ -2833,24 +2844,49 @@
         if (!poss) x -= dir * (line === 'FWD' ? 0.04 : line === 'MID' ? 0.015 : 0);
         y += (b.y - y) * (poss ? 0.14 : 0.28);
         // Personal drift: two layered slow waves, bigger for attackers than defenders.
-        const amp = line === 'FWD' ? 0.032 : line === 'MID' ? 0.026 : 0.016;
-        x += (Math.sin(tc * 0.00071 + ph) * 0.6 + Math.sin(tc * 0.0017 + ph * 2.3) * 0.4) * amp;
-        y += (Math.cos(tc * 0.00063 + ph * 1.7) * 0.6 + Math.sin(tc * 0.0021 + ph) * 0.4) * amp * 1.2;
+        const amp = line === 'FWD' ? 0.045 : line === 'MID' ? 0.038 : 0.024;
+        x += (Math.sin(tc * 0.00071 + ph) * 0.6 + Math.sin(tc * 0.0017 + ph * 2.3) * 0.4) * amp + wd.x;
+        y += (Math.cos(tc * 0.00063 + ph * 1.7) * 0.6 + Math.sin(tc * 0.0021 + ph) * 0.4) * amp * 1.3 + wd.y;
         if (live && poss && prog > 0.45) {
           const push = (prog - 0.45) * 2;
           if (/^(LB|RB|LWB|RWB)$/.test(pos)) x += dir * 0.08 * push; // overlap
           if (/^(LW|RW|LM|RM)$/.test(pos)) y += Math.sign(a.y - 0.5) * 0.03 * push; // hug the line
           if (line === 'FWD') {
-            const run = Math.max(0, Math.sin(tc * 0.0009 + ph * 3)); // a run in behind every few seconds
-            x += dir * 0.07 * run * run;
-            if (pos === 'ST') y += Math.sin(ph * 5) * 0.06 * run; // on the diagonal
+            const run = Math.max(0, Math.sin(tc * 0.0012 + ph * 3)); // a run in behind every few seconds
+            x += dir * 0.1 * run * run;
+            if (pos === 'ST') y += Math.sin(ph * 5) * 0.08 * run; // on the diagonal
+          }
+          if (pos === 'CAM' || pos === 'CM') {
+            const late = Math.max(0, Math.sin(tc * 0.0008 + ph * 4)); // late runs into the box
+            x += dir * 0.07 * late * late * late;
           }
         }
         if (live && poss && prog < 0.35 && (pos === 'CDM' || pos === 'CM')) {
           x -= dir * 0.04; // drop deep to collect from the back line
           y += (b.y - y) * 0.2;
         }
-        return { x, y };
+        // Moments where the shape breaks, then reforms once play moves on.
+        const depthTo = (d) => (team === 0 ? d : 1 - d);
+        if (live && poss && prog > 0.66) {
+          // Final third: forwards crash the box, midfielders arrive at its edge.
+          if (line === 'FWD') { x += (depthTo(0.87) - x) * 0.45; y += (0.5 + (a.y - 0.5) * 0.5 - y) * 0.35; }
+          else if (/^(CAM|CM|LM|RM)$/.test(pos)) x += (depthTo(0.74) - x) * 0.28;
+        }
+        if (live && !poss && prog < 0.34) {
+          // Pinned back: defenders collapse into the box, midfield drops in front of them.
+          if (line === 'DEF') { x += (depthTo(0.13) - x) * 0.35; y += (0.5 + (a.y - 0.5) * 0.65 - y) * 0.3; }
+          else if (line === 'MID') x += (depthTo(0.25) - x) * 0.3;
+        }
+        if (live && LV.counter && LV.counter.team === team) {
+          // Just won the ball: sprint forward on the counter for a few seconds.
+          const k = 1 - (tc - LV.counter.t) / 3000;
+          if (k > 0) x += dir * (line === 'FWD' ? 0.13 : line === 'MID' ? 0.06 : 0) * k;
+        }
+        if (/^(LW|RW|LM|RM)$/.test(pos)) {
+          const cut = Math.max(0, Math.sin(tc * 0.0007 + ph * 2)); // wide players drift inside now and then
+          y += (0.5 - y) * 0.35 * cut * cut;
+        }
+        return { x: clamp(x, 0.05, 0.95), y }; // outfield players stay off the goal lines
       });
     });
   }
@@ -2872,9 +2908,16 @@
         const p = (st.t - a.t0) / Math.max(1e-6, a.t1 - a.t0);
         T[c.team][c.slot].x += (c.team === 0 ? 1 : -1) * 0.05 * p;
       }
-      const pr = nearestOpponent(c.team, st.ball);
-      const tp = T[1 - c.team][pr];
-      tp.x += (st.ball.x - tp.x) * 0.6; tp.y += (st.ball.y - tp.y) * 0.6;
+      // The nearest opponent presses the ball; the next nearest closes the space behind.
+      const opp = 1 - c.team;
+      LV.pos[opp]
+        .map((p, i) => ({ i, d: Math.hypot(p.x - st.ball.x, p.y - st.ball.y) }))
+        .filter((o) => slotLine(opp, o.i) !== 'GK')
+        .sort((m, n) => m.d - n.d).slice(0, 2)
+        .forEach(({ i }, rank) => {
+          const tp = T[opp][i], pull = rank === 0 ? 0.6 : 0.3;
+          tp.x += (st.ball.x - tp.x) * pull; tp.y += (st.ball.y - tp.y) * pull;
+        });
       // The two nearest outfield teammates drift toward the carrier to offer a pass (without crowding).
       LV.pos[c.team]
         .map((p, i) => ({ i, d: Math.hypot(p.x - cp.x, p.y - cp.y) }))
@@ -2891,7 +2934,7 @@
         t.x += (a.p0.x - t.x) * 0.12; t.y += (a.p0.y - t.y) * 0.12;
       }
     }
-    const k = Math.min(1, dt * 0.0045 * Math.sqrt(LV.speed || 1));
+    const k = Math.min(1, dt * 0.0055 * Math.sqrt(LV.speed || 1));
     [0, 1].forEach((team) => LV.pos[team].forEach((p, i) => {
       const t = T[team][i];
       const ki = Math.min(1, k * LV.agility[team][i]); // quicker Pokémon get there faster

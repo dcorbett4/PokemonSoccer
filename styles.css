@@ -586,3 +586,7 @@ button.award:hover { border-color: #3a414d; }
   .lb-score { font-size: 22px; }
   .lb-team { font-size: 12.5px; }
 }
+
+/* ---------- Season playback controls ---------- */
+.sim-ctl { display: flex; flex-direction: column; gap: 6px; }
+.sim-ctl .seg button { font-size: 12px; }

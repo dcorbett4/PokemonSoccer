@@ -206,7 +206,7 @@
   // ================================================================
   // State
   // ================================================================
-  const S = Object.assign({ view: 'builder', sprite: 'pixel' }, store.get('pxi.settings', {}));
+  const S = Object.assign({ view: 'builder', sprite: 'pixel', simMode: 'auto', simSpeed: 1 }, store.get('pxi.settings', {}));
   let B = store.get('pxi.builder', null); // builder state
   // One saved run per challenge mode; C always points at the run for the current view.
   const RUNS = {
@@ -1158,16 +1158,53 @@
       <div class="sub" id="lv-pts">${cfg.sub(0, 0, 0, 0, 0)}</div>
       <div class="ticker" id="lv-tick"><span class="muted">Kick-off…</span></div>
       <div class="form-strip">${games.map(() => '<i class="pending"></i>').join('')}</div>
+      <div class="sim-ctl">
+        <div class="seg small" id="lv-mode"><button data-m="auto">▶ Auto</button><button data-m="manual">👆 Manual</button></div>
+        <div class="seg small" id="lv-speed">${SIM_SPEEDS.map(([v, l]) => `<button data-s="${v}">${l}</button>`).join('')}</div>
+        <button class="btn btn-gold wide" id="lv-next" hidden>Next match ▶</button>
+      </div>
       <div class="lv-actions">${cfg.res && cfg.res.clubs ? '<button class="btn" id="lv-watch">📺 Watch next match</button>' : ''}<button class="btn" id="lv-skip">Skip to the end ⏭</button></div>`;
     const cells = $$('.form-strip i', box);
     let i = 0, w = 0, d = 0, l = 0, gf = 0, ga = 0;
     const finish = () => {
-      clearTimeout(seasonTimer); seasonTimer = null; skipPlayback = null;
+      clearTimeout(seasonTimer); seasonTimer = null; skipPlayback = null; manualNext = null;
       render();
       cfg.onFinish();
       saveAll();
     };
     skipPlayback = finish;
+
+    // Auto plays on a timer (scaled by speed); manual waits for "Next match".
+    const nextBtn = $('#lv-next', box);
+    const syncCtl = () => {
+      $$('#lv-mode button', box).forEach((b) => b.classList.toggle('on', b.dataset.m === S.simMode));
+      $$('#lv-speed button', box).forEach((b) => b.classList.toggle('on', +b.dataset.s === S.simSpeed));
+      $('#lv-speed', box).hidden = S.simMode !== 'auto';
+      nextBtn.hidden = S.simMode !== 'manual' || i >= games.length;
+      if (games[i]) nextBtn.textContent = `Next: ${cfg.short(games[i])} ${games[i].home ? 'vs' : '@'} ${games[i].opp} ▶`;
+    };
+    const schedule = (ms) => {
+      clearTimeout(seasonTimer);
+      seasonTimer = 1; // stays truthy while paused in manual mode
+      if (S.simMode === 'auto') seasonTimer = setTimeout(step, Math.min(3000, ms / S.simSpeed));
+      syncCtl();
+    };
+    manualNext = () => { if (S.simMode === 'manual' && i < games.length && $('#live').hidden) step(); };
+    nextBtn.addEventListener('click', () => manualNext && manualNext());
+    $('#lv-mode', box).addEventListener('click', (e) => {
+      const b = e.target.closest('[data-m]');
+      if (!b || b.dataset.m === S.simMode) return;
+      S.simMode = b.dataset.m; store.set('pxi.settings', S);
+      if (i < games.length && $('#live').hidden) schedule(S.simMode === 'auto' ? 150 : 0);
+      else syncCtl();
+    });
+    $('#lv-speed', box).addEventListener('click', (e) => {
+      const b = e.target.closest('[data-s]');
+      if (!b) return;
+      S.simSpeed = +b.dataset.s; store.set('pxi.settings', S);
+      syncCtl();
+    });
+
     let watchNext = false;
     const watchBtnEl = $('#lv-watch', box);
     if (watchBtnEl) watchBtnEl.addEventListener('click', () => {
@@ -1205,12 +1242,19 @@
       t.classList.remove('in'); void t.offsetWidth; t.classList.add('in');
       $('#lv-streak', box).textContent = cfg.streak(w, d, l);
       i++;
-      if (i >= games.length) { seasonTimer = setTimeout(finish, 600); return; }
-      seasonTimer = setTimeout(step, cfg.delay(i, l));
+      if (i >= games.length) { syncCtl(); seasonTimer = setTimeout(finish, 600); return; }
+      schedule(cfg.delay(i, l));
     };
     $('#lv-skip', box).addEventListener('click', finish);
-    if (REDUCE) finish(); else seasonTimer = setTimeout(step, 400);
+    if (REDUCE) finish(); else schedule(400);
   }
+  // Season playback speeds: multipliers on each competition's base pacing ("Fast" = the original pace).
+  const SIM_SPEEDS = [[0.15, 'Slow'], [0.4, 'Normal'], [1, 'Fast'], [4, 'Turbo']];
+  let manualNext = null;
+  document.addEventListener('keydown', (e) => {
+    if (!manualNext || (e.target.closest && e.target.closest('input, textarea, select'))) return;
+    if ((e.key === 'ArrowRight' || e.key.toLowerCase() === 'n') && $$('.modal').every((m) => m.hidden)) { e.preventDefault(); manualNext(); }
+  });
 
   // ---------------- Match simulation ----------------
   function poisson(l) { const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= rnd(); } while (p > L); return k - 1; }

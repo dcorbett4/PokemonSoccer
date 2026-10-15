@@ -197,7 +197,7 @@
     try { navigator.vibrate(ms); } catch { /* ignore */ }
   };
   const STAT_KEYS = [['hp', 'HP'], ['atk', 'Atk'], ['def', 'Def'], ['spa', 'SpA'], ['spd', 'SpD'], ['spe', 'Spe']];
-  const statCol = (v) => (v >= 110 ? 'var(--win)' : v >= 80 ? 'var(--ink)' : 'var(--faint)');
+  const statCol = (v) => (v >= 110 ? 'var(--stat-great)' : v >= 80 ? 'var(--stat-good)' : 'var(--stat-low)');
   // Six stat columns with a small bar under each (draft options, picker).
   const statBars = (p, hl) => `<span class="sbars">${STAT_KEYS.map(([k]) =>
     `<span class="sb${hl === k ? ' hl' : ''}"><b>${p.s[k]}</b><i><u style="width:${Math.min(100, Math.round(p.s[k] / 1.6))}%;background:${statCol(p.s[k])}"></u></i></span>`).join('')}</span>`;
@@ -1000,6 +1000,7 @@
       $('#ch-reroll').textContent = `Reroll (${C.rerolls})`;
       $('#ch-reroll').disabled = C.rerolls <= 0 || rolling || autoDrafting;
       $('#ch-auto').disabled = autoDrafting;
+      $('#ch-auto').hidden = !!C.daily; // Dailies are drafted by hand, every position
       $('#ch-auto').textContent = autoDrafting ? 'Auto-drafting…' : 'Auto-draft the rest';
       const opts = $('#ch-options');
       opts.classList.toggle('veiled', rolling);
@@ -1066,7 +1067,7 @@
   // challenges stay fair.
   let autoDrafting = false;
   async function autoDraft() {
-    if (C.phase !== 'draft' || autoDrafting) return;
+    if (C.phase !== 'draft' || autoDrafting || C.daily) return;
     autoDrafting = true;
     render();
     const run = C, wait = (ms) => new Promise((r) => setTimeout(r, REDUCE ? 0 : ms));

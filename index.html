@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Pixelify+Sans:wght@700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=1a8f991a97" />
+  <link rel="stylesheet" href="styles.css?v=22689db970" />
 </head>
 <body>
   <header class="topbar">
@@ -24,6 +24,7 @@
       </div>
       <nav class="modes" aria-label="Game modes">
         <button class="mode-btn" data-view="challenge"><span class="ml">38–0 Challenge</span><span class="ms">38–0</span></button>
+        <button class="mode-btn" data-view="daily"><span class="ml">Daily</span><span class="ms">Daily</span></button>
         <button class="mode-btn" data-view="regions"><span class="ml">Region League</span><span class="ms">Regions</span></button>
         <button class="mode-btn" data-view="builder"><span class="ml">Builder</span><span class="ms">Builder</span></button>
         <button class="mode-btn" data-view="records"><span class="ml">Records</span><span class="ms">Records</span></button>
@@ -90,6 +91,7 @@
           <p class="muted small-text" id="daily-desc"></p>
           <button id="daily-play" class="btn btn-gold">Play today's Daily</button>
           <button id="daily-share" class="btn wide" hidden>Share today's result</button>
+          <div class="daily-past" id="daily-past"></div>
         </div>
 
         <div id="ch-setup">
@@ -253,6 +255,7 @@
           <h3>Modes</h3>
           <div class="help-modes">
             <div><b>38–0 Challenge</b><span>Draft a squad from random rolls, then try to win all 38 league games.</span></div>
+            <div><b>Daily</b><span>One run a day with the same rolls and formation for everyone. Share your result and keep your streak going.</span></div>
             <div><b>Region League</b><span>Draft mostly from your home region. Finish top 4 to reach Victory Road against the other regions.</span></div>
             <div><b>Builder</b><span>Free play. Build any lineup you want and share it. No games are played.</span></div>
             <div><b>Records</b><span>Your trophies, all-time records, Pokémon career stats and every season you've finished.</span></div>
@@ -308,7 +311,8 @@
           <p class="muted">A perfect 38–0 is extremely rare. Even an elite squad pulls it off only about 1 run in 70.</p>
           <h3>Daily Challenge</h3>
           <ul>
-            <li>Everyone gets the <b>same rolls and formation</b> each day, with <b>one attempt</b>. A new Daily starts at midnight.</li>
+            <li>Open the <b>Daily</b> tab. Everyone gets the <b>same rolls and formation</b> each day, with <b>one attempt</b>. A new Daily starts at midnight.</li>
+            <li>The tab tracks how many Dailies you've played, your best score and your <b>day streak</b>.</li>
             <li>Share your result as an emoji grid of all 38 games and compare with friends.</li>
           </ul>
           <h3>Challenge a friend</h3>
@@ -455,6 +459,6 @@
   <div class="toast" id="toast" hidden></div>
 
   <script src="data.js?v=a386ee55ba"></script>
-  <script src="app.js?v=51e901415c"></script>
+  <script src="app.js?v=f882c637f3"></script>
 </body>
 </html>

@@ -606,3 +606,7 @@ button.award:hover { background: var(--surface-2); }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 .live-card > *, .modal-card > .modal-head, .modal-card > .modal-tools, .modal-card > .pad, .modal-card > .tabs { flex-shrink: 0; }
+
+/* ---------- Daily tab ---------- */
+.daily-past { display: flex; flex-direction: column; margin-top: 8px; }
+.daily-past .label { margin-bottom: 4px; }

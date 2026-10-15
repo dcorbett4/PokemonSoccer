@@ -214,9 +214,12 @@
   // One saved run per challenge mode; C always points at the run for the current view.
   const RUNS = {
     challenge: Object.assign(newRun('classic'), store.get('pxi.challenge', {}), { mode: 'classic' }),
+    daily: Object.assign(newRun('classic'), store.get('pxi.daily-run', {}), { mode: 'classic' }),
     regions: Object.assign(newRun('regions'), store.get('pxi.regions', {}), { mode: 'regions' }),
   };
-  const isRun = () => S.view === 'challenge' || S.view === 'regions';
+  // Dailies used to share the 38–0 slot; move an in-progress one to its own tab.
+  if (RUNS.challenge.daily) { RUNS.daily = RUNS.challenge; RUNS.challenge = newRun('classic'); }
+  const isRun = () => S.view === 'challenge' || S.view === 'regions' || S.view === 'daily';
   let C = RUNS[S.view] || RUNS.challenge;
   let ST = Object.assign({ best: null, bestRec: null, runs: 0 }, store.get('pxi.stats', {}));
   let SR = Object.assign({ runs: 0, titles: 0, bestScore: null, bestText: null }, store.get('pxi.rstats', {}));
@@ -225,6 +228,7 @@
     store.set('pxi.settings', S);
     store.set('pxi.builder', B);
     store.set('pxi.challenge', RUNS.challenge);
+    store.set('pxi.daily-run', RUNS.daily);
     store.set('pxi.regions', RUNS.regions);
     store.set('pxi.stats', ST);
     store.set('pxi.rstats', SR);
@@ -467,7 +471,7 @@
     $('#challenge-panel').hidden = !isRun();
     $('#records-panel').hidden = S.view !== 'records';
     $$('.mode-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === S.view));
-    document.title = ({ challenge: '38–0 Challenge · ', regions: 'Region League · ', records: 'Records · ' }[S.view] || '') + 'Pokémon Starting XI';
+    document.title = ({ challenge: '38–0 Challenge · ', daily: 'Daily Challenge · ', regions: 'Region League · ', records: 'Records · ' }[S.view] || '') + 'Pokémon Starting XI';
     renderSpriteSegs();
     if (S.view === 'builder') { trackHistory(); renderBuilderPanel(); } else if (S.view === 'records') renderRecords(); else renderChallenge();
     renderPitch();
@@ -845,8 +849,9 @@
   const viewOf = (mode) => (mode === 'regions' ? 'regions' : 'challenge');
   function resetRun() {
     const { mode, pool, f, home } = C;
+    const key = Object.keys(RUNS).find((k) => RUNS[k] === C) || viewOf(mode);
     C = Object.assign(newRun(mode), { pool, f, home });
-    RUNS[viewOf(mode)] = C;
+    RUNS[key] = C;
   }
   // Start drafting a fresh run. Every new run is seeded so it can be shared as a challenge.
   function beginRun(opts = {}) {
@@ -941,15 +946,16 @@
   const qualifies = () => C.mode === 'regions' && C.result && C.result.me.position <= 4;
 
   function renderChallenge() {
-    const R = C.mode === 'regions';
-    $('#ch-mode-title').textContent = R ? 'Region League' : C.daily ? `Daily Challenge #${C.daily}` : '38–0 Challenge';
-    $('#ch-kicker').textContent = R ? `Draft mode · ${REGION[C.home]} · ${C.f}` : `Draft mode · ${C.f}${C.pool === 'retro' ? ' · Gen 1–4' : ''}`;
+    const R = C.mode === 'regions', D = S.view === 'daily';
+    $('#ch-mode-title').textContent = R ? 'Region League' : D ? `Daily Challenge #${C.daily || dailyInfo().no}` : '38–0 Challenge';
+    $('#ch-kicker').textContent = R ? `Draft mode · ${REGION[C.home]} · ${C.f}` : D ? `Daily · ${C.daily ? C.f : dailyInfo().f}` : `Draft mode · ${C.f}${C.pool === 'retro' ? ' · Gen 1–4' : ''}`;
     $('#ch-lede').textContent = R
       ? `Pick a home region — 75% of your draft rolls come from there. Fill all 11, play a 38-game regional league, and finish top 4 to reach Victory Road against the best clubs from every other region. Win your group to make the Final Four.`
-      : 'Each round rolls a region and a type. Draft a matching Pokémon (up to 3 Legendaries) into any open spot, fill all 11, then play a 38-game league season. Can you go 38–0?';
+      : D ? 'One run a day with the same rolls and formation for everyone. Draft, play the 38-game season, then share your result and compare with friends.'
+        : 'Each round rolls a region and a type. Draft a matching Pokémon (up to 3 Legendaries) into any open spot, fill all 11, then play a 38-game league season. Can you go 38–0?';
     $('#ch-pool-wrap').hidden = R;
     $('#ch-home-wrap').hidden = !R;
-    $('#ch-setup').hidden = C.phase !== 'setup';
+    $('#ch-setup').hidden = C.phase !== 'setup' || D;
     $('#ch-draft').hidden = C.phase !== 'draft';
     $('#ch-ready').hidden = C.phase !== 'ready';
     $('#ch-result').hidden = !(C.phase === 'result' || C.phase === 'national');
@@ -958,14 +964,19 @@
     $$('#ch-home-grid button').forEach((b) => b.classList.toggle('on', +b.dataset.v === C.home));
     $('#ch-play').textContent = R ? `Play the ${REGION[C.home]} League` : 'Play the season';
 
-    if (R) {
+    if (D) {
+      const ds = dailyStats();
+      $('#st-k1').textContent = 'Dailies played'; $('#st-best').textContent = ds.played;
+      $('#st-k2').textContent = 'Best points'; $('#st-rec').textContent = ds.best == null ? '–' : ds.best + ' pts';
+    } else if (R) {
       $('#st-k1').textContent = 'Victory Road titles'; $('#st-best').textContent = SR.titles;
       $('#st-k2').textContent = 'Best finish'; $('#st-rec').textContent = SR.bestText || '–';
     } else {
       $('#st-k1').textContent = 'Best points'; $('#st-best').textContent = ST.best == null ? '–' : ST.best + ' pts';
       $('#st-k2').textContent = 'Best record'; $('#st-rec').textContent = ST.bestRec || '–';
     }
-    $('#st-runs').textContent = R ? SR.runs : ST.runs;
+    $('#st-runs').textContent = D ? dailyStats().streak : R ? SR.runs : ST.runs;
+    $('#st-runs').previousElementSibling.textContent = D ? 'Day streak' : 'Runs';
 
     const canGoNational = qualifies() && C.phase === 'result' && !C.national;
     $('#ch-national').hidden = !canGoNational || !!seasonTimer;
@@ -979,7 +990,7 @@
     if (C.vs) $('#ch-vs').innerHTML = `Challenge from <b>${esc(C.vs.a.n)}</b>: beat ${resultLine(C.vs.a.r)}`;
     $('#ch-share').hidden = !!seasonTimer || !(C.phase === 'result' || C.phase === 'national') || !C.result;
     $('#ch-again').className = 'btn wide';
-    $('#ch-again').textContent = canGoNational ? 'End run' : 'New run';
+    $('#ch-again').textContent = canGoNational ? 'End run' : D ? 'Back to the Daily' : 'New run';
 
     if (C.phase === 'draft' && C.roll) {
       $('#ch-round').textContent = `Round ${C.round + 1}`;
@@ -2137,17 +2148,34 @@
     ].filter(Boolean).join('\n');
   }
   function saveDaily() {
-    DAILY[C.dailyKey] = { no: C.daily, started: true, done: { line: resultLine(runSummary()), text: dailyShareText() } };
+    DAILY[C.dailyKey] = { no: C.daily, started: true, done: { line: resultLine(runSummary()), text: dailyShareText(), pts: C.result.me.pts } };
     saveDailyStore();
+  }
+
+  // Played count, best points and the current run of consecutive days (today or yesterday onward).
+  function dailyStats() {
+    const done = Object.entries(DAILY).filter(([, e]) => e.done);
+    const pts = (e) => (e.done.pts != null ? e.done.pts : +((e.done.line.match(/(\d+) pts/) || [])[1] || 0));
+    const best = done.length ? Math.max(...done.map(([, e]) => pts(e))) : null;
+    let streak = 0;
+    const day = new Date();
+    if (!(DAILY[dayKey(day)] && DAILY[dayKey(day)].done)) day.setDate(day.getDate() - 1);
+    while (DAILY[dayKey(day)] && DAILY[dayKey(day)].done) { streak++; day.setDate(day.getDate() - 1); }
+    return { played: done.length, best, streak, done, pts };
   }
 
   function renderDaily() {
     const box = $('#daily-box');
-    box.hidden = C.mode !== 'classic' || C.phase !== 'setup';
+    box.hidden = S.view !== 'daily' || C.phase !== 'setup';
     if (box.hidden) return;
+    const ds = dailyStats();
+    const recent = ds.done.sort((a, b) => (a[0] < b[0] ? 1 : -1)).slice(0, 7);
+    $('#daily-past').innerHTML = recent.length
+      ? `<span class="label">Recent dailies</span>${recent.map(([key, e]) => `<div class="kv"><span>#${e.no} · ${new Date(key + 'T12:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span><b>${esc(e.done.line)}</b></div>`).join('')}`
+      : '';
     const d = dailyInfo(), entry = DAILY[d.key];
     const mins = Math.ceil((new Date(new Date().setHours(24, 0, 0, 0)) - new Date()) / 60000);
-    $('#daily-title').textContent = `Daily Challenge #${d.no}`;
+    $('#daily-title').textContent = 'Today';
     $('#daily-next').textContent = `Next in ${Math.floor(mins / 60)}h ${mins % 60}m`;
     if (entry && entry.done) {
       $('#daily-desc').innerHTML = `Today's result: <b>${esc(entry.done.line)}</b>`;
@@ -3185,7 +3213,7 @@
   }
   const closeHelp = () => { $('#help-modal').hidden = true; };
   // Open on the tab for whatever mode you're in.
-  $('#help-open').addEventListener('click', () => openHelp({ builder: 'builder', challenge: 'challenge', regions: 'regions', records: 'records' }[S.view] || 'basics'));
+  $('#help-open').addEventListener('click', () => openHelp({ builder: 'builder', challenge: 'challenge', daily: 'challenge', regions: 'regions', records: 'records' }[S.view] || 'basics'));
   $('#help-close').addEventListener('click', closeHelp);
   $('#help-modal').addEventListener('click', (e) => { if (e.target.id === 'help-modal') closeHelp(); });
   $('#help-tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-help]'); if (b) showHelpTab(b.dataset.help); });

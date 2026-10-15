@@ -2470,6 +2470,9 @@
     LV.agility = S0.clubs.map((c) => c.xi.map((id) => clamp(0.75 + BY_ID.get(id).s.spe / 220, 0.8, 1.45)));
     LV.clock = 0;
     LV.counter = null;
+    LV.shiftMul = S0.clubs.map((c) => c.xi.map(() => 0.75 + Math.random() * 0.45));
+    LV.react = S0.clubs.map((c) => c.xi.map(() => 0.7 + Math.random() * 0.6));
+    LV.floorOff = S0.clubs.map((c) => c.xi.map(() => Math.random() * 0.06));
     LV.wander = S0.clubs.map((c) => c.xi.map(() => ({ x: 0, y: 0, next: Math.random() * 2000 })));
     $('#live-score').textContent = '0 – 0';
     $('#live-clock').textContent = "0'";
@@ -2838,7 +2841,8 @@
           y = 0.5 + (b.y - 0.5) * 0.35 + Math.sin(tc * 0.0011 + ph) * 0.012 + wd.y;
           return { x: x + wd.x * 0.5, y };
         }
-        x = a.x + dir * shift;
+        x = a.x + dir * shift * LV.shiftMul[team][i]; // everyone pushes up/drops by a slightly different amount
+        if (line === 'DEF' && poss) x += dir * 0.025 * Math.max(0, Math.sin(tc * (0.0006 + (ph % 1) * 0.0005) + ph * 7)); // step out
         // Shape breathes: wider with the ball, narrower and more compact without it.
         y = 0.5 + (a.y - 0.5) * (poss ? 1.1 : 0.86);
         if (!poss) x -= dir * (line === 'FWD' ? 0.04 : line === 'MID' ? 0.015 : 0);
@@ -2886,7 +2890,13 @@
           const cut = Math.max(0, Math.sin(tc * 0.0007 + ph * 2)); // wide players drift inside now and then
           y += (0.5 - y) * 0.35 * cut * cut;
         }
-        return { x: clamp(x, 0.05, 0.95), y }; // outfield players stay off the goal lines
+        // Soft floor (different per player) instead of a hard limit, so a team pinned back compresses
+        // toward its goal without flattening into one straight line.
+        let dpt = team === 0 ? x : 1 - x;
+        const floor = (line === 'DEF' ? 0.08 : line === 'MID' ? 0.19 : 0.3) + LV.floorOff[team][i];
+        if (dpt < floor) dpt = floor - (floor - dpt) * 0.2;
+        dpt = Math.min(dpt, 0.95);
+        return { x: team === 0 ? dpt : 1 - dpt, y };
       });
     });
   }
@@ -2908,6 +2918,33 @@
         const p = (st.t - a.t0) / Math.max(1e-6, a.t1 - a.t0);
         T[c.team][c.slot].x += (c.team === 0 ? 1 : -1) * 0.05 * p;
       }
+      // Marking: defenders stay goal-side of the nearest attacker in their area (midfielders loosely), so
+      // the back line bends and staggers with the attackers instead of sliding as one straight line.
+      const att = c.team, dfd = 1 - c.team;
+      LV.pos[dfd].forEach((p, i) => {
+        const line = slotLine(dfd, i);
+        if (line === 'GK' || line === 'FWD') return;
+        const t = T[dfd][i];
+        let best = null, bd = Infinity;
+        LV.pos[att].forEach((q, j) => {
+          if (slotLine(att, j) === 'GK') return;
+          const d = Math.hypot(q.x - t.x, q.y - t.y);
+          if (d < bd) { bd = d; best = q; }
+        });
+        if (!best || bd > 0.25) return;
+        const pull = line === 'DEF' ? 0.45 : 0.25;
+        t.x += (best.x + (dfd === 0 ? -0.035 : 0.035) - t.x) * pull;
+        t.y += (best.y - t.y) * pull;
+      });
+      // Finding space: attackers off the ball drift away from whoever is closest to them.
+      LV.pos[att].forEach((p, i) => {
+        if (i === c.slot || slotLine(att, i) === 'GK') return;
+        let near = null, nd = Infinity;
+        LV.pos[dfd].forEach((q) => { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < nd) { nd = d; near = q; } });
+        if (!near || nd >= 0.12) return;
+        const push = ((0.12 - nd) / 0.12) * 0.6, t = T[att][i];
+        t.x += (p.x - near.x) * push; t.y += (p.y - near.y) * push;
+      });
       // The nearest opponent presses the ball; the next nearest closes the space behind.
       const opp = 1 - c.team;
       LV.pos[opp]
@@ -2937,7 +2974,7 @@
     const k = Math.min(1, dt * 0.0055 * Math.sqrt(LV.speed || 1));
     [0, 1].forEach((team) => LV.pos[team].forEach((p, i) => {
       const t = T[team][i];
-      const ki = Math.min(1, k * LV.agility[team][i]); // quicker Pokémon get there faster
+      const ki = Math.min(1, k * LV.agility[team][i] * LV.react[team][i]); // quicker Pokémon get there faster
       p.x += (clamp(t.x, 0.015, 0.985) - p.x) * ki;
       p.y += (clamp(t.y, 0.03, 0.97) - p.y) * ki;
     }));

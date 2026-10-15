@@ -1048,6 +1048,7 @@
     const n = C.result.games.length;
     playGames(C.result.games, {
       phase: 'league',
+      res: C.result,
       label: (g, i) => `Matchday ${i + 1} / ${n}`,
       short: (g) => `MD${g.md}`,
       sub: (w, d) => `${w * 3 + d} pts`,
@@ -1075,6 +1076,9 @@
     const newBest = recordRegionFinish();
     playGames(C.national.games, {
       phase: 'national',
+      res: C.national,
+      // Final Four ties are offered live automatically.
+      autoWatch: (g) => g.short && !g.short.startsWith('G'),
       label: (g) => g.stage,
       short: (g) => g.short,
       sub: (w, d, l, gf, ga) => `GF ${gf} · GA ${ga}`,
@@ -1103,7 +1107,7 @@
       <div class="sub" id="lv-pts">${cfg.sub(0, 0, 0, 0, 0)}</div>
       <div class="ticker" id="lv-tick"><span class="muted">Kick-off…</span></div>
       <div class="form-strip">${games.map(() => '<i class="pending"></i>').join('')}</div>
-      <button class="btn" id="lv-skip">Skip to the end ⏭</button>`;
+      <div class="lv-actions">${cfg.res && cfg.res.clubs ? '<button class="btn" id="lv-watch">📺 Watch next match</button>' : ''}<button class="btn" id="lv-skip">Skip to the end ⏭</button></div>`;
     const cells = $$('.form-strip i', box);
     let i = 0, w = 0, d = 0, l = 0, gf = 0, ga = 0;
     const finish = () => {
@@ -1113,7 +1117,26 @@
       saveAll();
     };
     skipPlayback = finish;
+    let watchNext = false;
+    const watchBtnEl = $('#lv-watch', box);
+    if (watchBtnEl) watchBtnEl.addEventListener('click', () => {
+      watchNext = !watchNext;
+      watchBtnEl.textContent = watchNext ? '✓ Watching next match' : '📺 Watch next match';
+      watchBtnEl.classList.toggle('on', watchNext);
+    });
+    // Before revealing a game, optionally pause and watch it live.
     const step = () => {
+      const g = games[i];
+      const mi = cfg.res && cfg.res.clubs ? matchIndex(cfg.res, g) : -1;
+      if (mi >= 0 && !REDUCE && (watchNext || (cfg.autoWatch && cfg.autoWatch(g)))) {
+        watchNext = false;
+        if (watchBtnEl) { watchBtnEl.textContent = '📺 Watch next match'; watchBtnEl.classList.remove('on'); }
+        openLive(cfg.res, mi, { fromPlayback: true, onClose: () => { if (skipPlayback === finish) reveal(); } });
+        return;
+      }
+      reveal();
+    };
+    const reveal = () => {
       const g = games[i];
       if (g.res === 'W') w++; else if (g.res === 'D') d++; else l++;
       gf += g.gf; ga += g.ga;
@@ -1206,11 +1229,11 @@
 
   // A club's season from its own point of view (works for any club in a result).
   function teamGames(res, ci) {
-    return res.matches.filter((m) => m.h === ci || m.a === ci).map((m) => {
+    return res.matches.map((m, mi) => [m, mi]).filter(([m]) => m.h === ci || m.a === ci).map(([m, mi]) => {
       const home = m.h === ci, o = home ? m.a : m.h;
       const gf = home ? m.gh : m.ga, ga = home ? m.ga : m.gh;
       return {
-        md: m.md, stage: m.stage, short: m.short, home, oppIdx: o, opp: res.clubs[o].name,
+        md: m.md, mi, stage: m.stage, short: m.short, home, oppIdx: o, opp: res.clubs[o].name,
         oppRegion: res.national ? res.clubs[o].region : undefined,
         gf, ga, res: gf > ga ? 'W' : gf === ga ? 'D' : 'L', goals: home ? m.eh : m.ea,
         et: m.et, pens: m.pens ? (home ? m.pens : [m.pens[1], m.pens[0]]) : null,
@@ -1433,9 +1456,11 @@
       ${rows.map((r) => `<tr><td class="team"><span class="ppos" style="color:${posColor(r.pos)}">${r.pos}</span>${esc(slotName(r.i))}</td><td><b style="color:${perfColor(r.rtg)}">${r.rtg}</b></td><td>${r.g}</td><td>${r.a}</td><td><b>${r.g + r.a}</b></td><td>${POS[r.pos].line === 'GK' || POS[r.pos].line === 'DEF' ? r.cs : '–'}</td><td>${r.motm}</td></tr>`).join('')}
       </table></div>`;
   }
-  function matchesBody(games, labelFn, xi = C.xi) {
-    return `<div class="matches">${games.map((g) => `<div class="m">
-      <span class="muted">${labelFn(g)}</span><span class="muted">${g.home ? 'vs' : '@'}</span><span class="opp">${esc(g.opp)}</span><span class="${cellRes(g)}">${cellRes(g)} ${scoreText(g)}</span>
+  function matchesBody(games, labelFn, xi = C.xi, src = null, ci = 0) {
+    const res = src === 'national' ? C.national : src ? C.result : null;
+    const canWatch = res && res.clubs;
+    return `<div class="matches${canWatch ? ' watchable' : ''}">${games.map((g) => `<div class="m">
+      <span class="muted">${labelFn(g)}</span><span class="muted">${g.home ? 'vs' : '@'}</span><span class="opp">${esc(g.opp)}</span><span class="${cellRes(g)}">${cellRes(g)} ${scoreText(g)}</span>${canWatch ? watchBtn(src, matchIndex(res, g, ci)) : ''}
       ${g.goals && g.goals.length ? `<span class="scorers">${scorerText(g, true, xi)}</span>` : ''}</div>`).join('')}</div>`;
   }
   const pkName = (id) => esc(BY_ID.get(id).name);
@@ -1519,7 +1544,7 @@
     } else if (resultTab === 'awards') {
       body = awardsBody(C.result);
     } else if (resultTab === 'matches') {
-      body = matchesBody(games, (g) => g.md);
+      body = matchesBody(games, (g) => g.md, C.xi, 'league');
     } else if (!hasGoalData(C.result)) {
       body = '<p class="muted small-text">Player stats are tracked for seasons played from now on.</p>';
     } else {
@@ -1567,7 +1592,7 @@
     } else if (resultTab === 'awards') {
       body = awardsBody(N);
     } else if (resultTab === 'matches') {
-      body = matchesBody(games, (g) => g.short);
+      body = matchesBody(games, (g) => g.short, C.xi, 'national');
     } else {
       body = squadBody(games, 'Player of the Tournament');
     }
@@ -1623,7 +1648,7 @@
           <b style="color:${perfColor(pr[i])}">${pr[i]}</b></div>`;
       }).join('')}</div>
       <div class="group-title">Results</div>
-      ${matchesBody(games, (g) => (res.national ? g.short : g.md), club.xi)}`;
+      ${matchesBody(games, (g) => (res.national ? g.short : g.md), club.xi, src, ci)}`;
     $('#club-modal').hidden = false;
   }
   const closeClub = () => { $('#club-modal').hidden = true; };
@@ -2213,6 +2238,661 @@
     });
     return true;
   }
+
+  // ================================================================
+  // Live match viewer — a choreographed replay of an already-simulated match.
+  // The real goals happen at their real minutes with the real scorer/assister; everything between
+  // (possession, passes, near-misses) is seeded filler, so a replay always looks the same and never
+  // changes the result.
+  // ================================================================
+  const LV = { raf: 0, open: false };
+  const MS_PER_MIN = 650;   // real ms per game minute at 1×
+  const HOLD = { goal: 2600, ht: 1800, et: 1500, pen: 950 };
+  const TEAM_COLORS = { me: '#5ee08a', them: '#ff7a7a', home: '#6aa8ff', away: '#ff7a7a' };
+
+  // Find a game's raw match index (older saves don't store it on the game).
+  function matchIndex(res, g, ci = 0) {
+    if (g.mi != null) return g.mi;
+    return res.matches.findIndex((m) => m.md === g.md && m.stage === g.stage && (m.h === ci || m.a === ci) && (m.h === g.oppIdx || m.a === g.oppIdx));
+  }
+  const watchBtn = (src, mi) => (mi >= 0 ? `<button class="watch-btn" data-watch="${src}:${mi}" title="Watch this match">▶</button>` : '<span></span>');
+
+  // ---- Script: everything that will happen, decided up front ----
+  function buildScript(res, mi) {
+    const m = res.matches[mi];
+    const clubs = [res.clubs[m.h], res.clubs[m.a]];
+    const r = rngFor('live', C.seed || '', mi, clubs[0].name, clubs[1].name);
+    const end = m.et ? 120 : 90;
+    const str = clubs.map(strengthOf);
+    const pHome = clamp(0.5 + ((str[0].attack + str[0].defense) - (str[1].attack + str[1].defense)) / 160, 0.32, 0.68);
+    const events = [];
+    const goalsBy = [m.eh || [], m.ea || []];
+    goalsBy.forEach((list, team) => list.forEach((e) => events.push({ t: e.m - 0.2, min: e.m, team, kind: 'goal', s: e.s, a: e.a })));
+    // Cosmetic chances, kept clear of the real goals.
+    const busy = events.map((e) => e.t);
+    const free = (t) => busy.every((b) => Math.abs(b - t) > 2.5);
+    [0, 1].forEach((team) => {
+      const share = team === 0 ? pHome : 1 - pHome;
+      const n = 1 + Math.floor(r() * 3) + Math.round(share * 3);
+      for (let k = 0, tries = 0; k < n && tries < 60; tries++) {
+        const t = 3 + r() * (end - 6);
+        if (!free(t)) continue;
+        busy.push(t); k++;
+        const roll = r();
+        // Shooters: forwards mostly, midfielders sometimes.
+        const f = FORMATIONS[clubs[team].f];
+        const want = r() < 0.7 ? 'FWD' : 'MID';
+        const pool = f.map((_, i) => i).filter((i) => POS[f[i][0]].line === want);
+        events.push({ t, team, kind: roll < 0.5 ? 'saved' : roll < 0.85 ? 'wide' : 'blocked', s: pool.length ? pool[Math.floor(r() * pool.length)] : 10, a: null });
+      }
+    });
+    events.sort((x, y) => x.t - y.t);
+    // Space events out a little, but never past the final whistle (every real goal must happen).
+    for (let i = 1; i < events.length; i++) if (events[i].t <= events[i - 1].t + 0.4) events[i].t = events[i - 1].t + 0.45;
+    for (let i = events.length - 1; i >= 0; i--) {
+      const cap = i === events.length - 1 ? end - 0.3 : events[i + 1].t - 0.45;
+      if (events[i].t > cap) events[i].t = cap;
+    }
+    // Penalty shoot-out kicks, ordered so the tallies land on the real score.
+    let kicks = null;
+    if (m.pens) {
+      const n = Math.max(5, m.pens[0], m.pens[1]);
+      const seq = [0, 1].map((team) => {
+        const hits = Array(n).fill(false);
+        const idx = [...Array(n).keys()];
+        for (let k = idx.length - 1; k > 0; k--) { const j = Math.floor(r() * (k + 1)); [idx[k], idx[j]] = [idx[j], idx[k]]; }
+        idx.slice(0, m.pens[team]).forEach((k) => { hits[k] = true; });
+        return hits;
+      });
+      kicks = [];
+      for (let k = 0; k < n; k++) for (const team of [0, 1]) kicks.push({ team, hit: seq[team][k], taker: [10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0][k % 11] });
+    }
+    return { m, clubs, r, end, pHome, events, kicks, stage: m.stage || `Matchday ${m.md}` };
+  }
+
+  // ---- Pitch geometry: x = along the pitch (0 = home goal), y = across (0..1) ----
+  function anchorsFor(club, team) {
+    return FORMATIONS[club.f].map(([, fx, fy]) => {
+      const d = clamp((88 - fy) / 73, 0, 1);
+      const x = 0.045 + d * 0.4;
+      return team === 0 ? { x, y: fx / 100 } : { x: 1 - x, y: 1 - fx / 100 };
+    });
+  }
+
+  function openLive(res, mi, opts = {}) {
+    if (!res || !res.clubs || !res.matches[mi]) return;
+    const S0 = buildScript(res, mi);
+    const box = $('#live');
+    box.hidden = false;
+    LV.open = true;
+    LV.opts = opts;
+    LV.res = res; LV.mi = mi;
+    $('#live-stage').textContent = S0.stage;
+    $('#live-hname').textContent = S0.clubs[0].name;
+    $('#live-aname').textContent = S0.clubs[1].name;
+    const col = (team) => {
+      const c = S0.clubs[team], o = S0.clubs[1 - team];
+      return c.me ? TEAM_COLORS.me : o.me ? TEAM_COLORS.them : team === 0 ? TEAM_COLORS.home : TEAM_COLORS.away;
+    };
+    LV.colors = [col(0), col(1)];
+    $$('#live .lb-dot').forEach((d, i) => { d.style.background = LV.colors[i]; });
+    $('#live-feed').innerHTML = '';
+    LV.imgs = new Map();
+    S0.clubs.forEach((c) => c.xi.forEach((id) => {
+      if (LV.imgs.has(id)) return;
+      LV.imgs.set(id, null);
+      loadImg(spriteUrl(id, 'pixel')).then((im) => LV.imgs.set(id, im));
+    }));
+    LV.S = S0;
+    resetMatch();
+    sizeCanvas();
+    showPrematch();
+    cancelAnimationFrame(LV.raf);
+    LV.last = performance.now();
+    LV.raf = requestAnimationFrame(frame);
+  }
+
+  function closeLive() {
+    if (!LV.open) return;
+    LV.open = false;
+    cancelAnimationFrame(LV.raf);
+    $('#live').hidden = true;
+    const cb = LV.opts && LV.opts.onClose;
+    LV.opts = null;
+    if (cb) cb();
+  }
+
+  function resetMatch() {
+    const S0 = LV.S;
+    LV.st = {
+      t: 0, score: [0, 0], hold: 0, holdKind: null, banner: null, playing: false, done: false,
+      carrier: { team: 0, slot: 10 }, action: null, queue: [], ev: 0, htDone: false, etDone: false,
+      kick: 0, pens: [0, 0], celebrate: null, ball: { x: 0.5, y: 0.5, h: 0 }, flash: 0,
+    };
+    LV.anchors = [anchorsFor(S0.clubs[0], 0), anchorsFor(S0.clubs[1], 1)];
+    LV.pos = LV.anchors.map((a) => a.map((p) => ({ x: p.x, y: p.y })));
+    LV.phase = S0.clubs.map((c) => c.xi.map(() => Math.random() * 6.28));
+    $('#live-score').textContent = '0 – 0';
+    $('#live-clock').textContent = "0'";
+    $('#live-overlay').hidden = true;
+    $('#live-feed').innerHTML = '';
+    kickoffShape(0);
+  }
+
+  function kickoffShape(team) {
+    LV.pos = LV.anchors.map((a) => a.map((p) => ({ x: p.x, y: p.y })));
+    LV.st.ball = { x: 0.5, y: 0.5, h: 0 };
+    LV.st.carrier = { team, slot: 10 };
+    LV.st.action = null;
+    LV.st.queue = [];
+  }
+
+  const nameOf = (team, slot) => BY_ID.get(LV.S.clubs[team].xi[slot]).name;
+  function feed(html, cls = '') {
+    const el = document.createElement('div');
+    el.className = 'lf ' + cls;
+    el.innerHTML = html;
+    const f = $('#live-feed');
+    f.prepend(el);
+    while (f.children.length > 7) f.lastChild.remove();
+  }
+  const minLabel = (t) => `${Math.min(Math.max(1, Math.ceil(t)), LV.S.end)}'`;
+
+  // ---- Choosing what happens next ----
+  function slotLine(team, slot) { return POS[FORMATIONS[LV.S.clubs[team].f][slot][0]].line; }
+  function depthOf(team, slot) { const a = LV.anchors[team][slot]; return team === 0 ? a.x : 1 - a.x; }
+  function pickReceiver(team, from, avoid = []) {
+    const r = LV.S.r, n = LV.S.clubs[team].xi.length;
+    const cands = [];
+    for (let i = 0; i < n; i++) {
+      if (i === from || avoid.includes(i)) continue;
+      if (slotLine(team, i) === 'GK' && slotLine(team, from) !== 'DEF') continue;
+      const a = LV.pos[team][i], b = LV.pos[team][from];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      const fwd = depthOf(team, i) - depthOf(team, from);
+      cands.push([i, Math.exp(-dist * 3.5) * (1 + 1.4 * Math.max(0, fwd))]);
+    }
+    let tot = cands.reduce((s, c) => s + c[1], 0), x = r() * tot;
+    for (const [i, w] of cands) { x -= w; if (x <= 0) return i; }
+    return cands.length ? cands[cands.length - 1][0] : from;
+  }
+  function nearestOpponent(team, pt) {
+    const o = 1 - team;
+    let best = 0, bd = Infinity;
+    LV.pos[o].forEach((p, i) => { const d = Math.hypot(p.x - pt.x, p.y - pt.y); if (d < bd) { bd = d; best = i; } });
+    return best;
+  }
+
+  function nextAction() {
+    const st = LV.st, S0 = LV.S, r = S0.r;
+    if (st.queue.length) return st.queue.shift();
+    const ev = S0.events[st.ev];
+    const boundary = !st.htDone ? 45 : (S0.m.et && !st.etDone ? 90 : S0.end);
+    const LEAD = 2.4;
+    if (ev && ev.t - st.t <= LEAD && ev.t <= boundary + 0.01) return scriptEvent(ev);
+    // Free play: pass, dribble or lose the ball.
+    const c = st.carrier;
+    const share = c.team === 0 ? S0.pHome : 1 - S0.pHome;
+    let dur = 0.35 + r() * 0.5;
+    const cap = Math.min(boundary, ev ? ev.t - LEAD : Infinity) - st.t;
+    if (cap <= 0.05) return { type: 'idle', t0: st.t, t1: st.t + 0.05 };
+    dur = Math.min(dur, Math.max(0.12, cap));
+    const roll = r();
+    if (roll < 0.17 * (1 - share) / 0.5) {
+      const thief = nearestOpponent(c.team, st.ball);
+      return { type: 'pass', team: 1 - c.team, from: c, to: { team: 1 - c.team, slot: thief }, t0: st.t, t1: st.t + Math.min(dur, 0.3), steal: true };
+    }
+    if (roll < 0.42) return { type: 'dribble', team: c.team, slot: c.slot, t0: st.t, t1: st.t + dur };
+    return { type: 'pass', team: c.team, from: c, to: { team: c.team, slot: pickReceiver(c.team, c.slot) }, t0: st.t, t1: st.t + dur };
+  }
+
+  // Build-up that lands a shot exactly on the event minute.
+  function scriptEvent(ev) {
+    const st = LV.st, r = LV.S.r;
+    st.ev++;
+    const seq = [];
+    let c = { ...st.carrier };
+    if (c.team !== ev.team) {
+      const thief = nearestOpponent(c.team, st.ball);
+      seq.push({ type: 'pass', from: c, to: { team: ev.team, slot: thief }, steal: true });
+      c = { team: ev.team, slot: thief };
+    }
+    const route = [];
+    const mids = FORMATIONS[LV.S.clubs[ev.team].f].map((_, i) => i).filter((i) => slotLine(ev.team, i) === 'MID' && i !== ev.s && i !== ev.a);
+    if (mids.length && r() < 0.7) route.push(mids[Math.floor(r() * mids.length)]);
+    if (ev.a != null && ev.a !== ev.s) route.push(ev.a);
+    route.push(ev.s);
+    for (const slot of route) {
+      if (slot === c.slot) continue;
+      seq.push({ type: 'pass', from: c, to: { team: ev.team, slot } });
+      c = { team: ev.team, slot };
+    }
+    seq.push({ type: 'shot', team: ev.team, slot: ev.s, ev });
+    // Fit the sequence into the time left before the event minute.
+    const avail = Math.max(0.25, ev.t - st.t);
+    const shotDur = Math.min(0.25, avail * 0.3);
+    const per = (avail - shotDur) / Math.max(1, seq.length - 1);
+    let t = st.t;
+    seq.forEach((a, i) => {
+      const d = a.type === 'shot' ? shotDur : Math.max(0.08, per);
+      a.t0 = t; a.t1 = t + d; t += d;
+      if (a.type !== 'shot') a.team = a.to.team;
+    });
+    seq[seq.length - 1].t1 = Math.max(seq[seq.length - 1].t0 + 0.08, ev.t);
+    st.queue = seq.slice(1);
+    return seq[0];
+  }
+
+  // ---- Applying finished actions ----
+  function finishAction(a) {
+    const st = LV.st;
+    if (a.type === 'pass') st.carrier = { ...a.to };
+    if (a.type !== 'shot') return;
+    const ev = a.ev, team = ev.team, opp = 1 - team;
+    const who = esc(nameOf(team, ev.s)), club = esc(LV.S.clubs[team].name);
+    if (ev.kind === 'goal') {
+      st.score[team]++;
+      $('#live-score').textContent = `${st.score[0]} – ${st.score[1]}`;
+      feed(`<b>${ev.min}'</b> ⚽ <b>GOAL!</b> ${who} scores for ${club}${ev.a != null ? ` <span class="muted">(assist ${esc(nameOf(team, ev.a))})</span>` : ''} · ${st.score[0]}–${st.score[1]}`, 'goal');
+      startHold('goal', HOLD.goal, { text: 'GOAL!', sub: nameOf(team, ev.s), team });
+      st.celebrate = { team, slot: ev.s };
+      st.afterHold = () => kickoffShape(opp);
+      buzz(30);
+    } else if (ev.kind === 'saved') {
+      feed(`<b>${minLabel(ev.t)}</b> ${who} shoots… saved by ${esc(nameOf(opp, 0))}!`);
+      st.carrier = { team: opp, slot: 0 };
+    } else if (ev.kind === 'wide') {
+      feed(`<b>${minLabel(ev.t)}</b> ${who} fires wide.`);
+      st.carrier = { team: opp, slot: 0 };
+      st.ball = { x: LV.pos[opp][0].x, y: LV.pos[opp][0].y, h: 0 };
+    } else {
+      const def = nearestOpponent(team, st.ball);
+      feed(`<b>${minLabel(ev.t)}</b> ${who}'s shot is blocked by ${esc(nameOf(opp, def))}.`);
+      st.carrier = { team: opp, slot: def };
+    }
+  }
+
+  function startHold(kind, ms, banner) {
+    const st = LV.st;
+    st.hold = ms; st.holdKind = kind; st.banner = banner || null;
+    if (kind === 'goal') st.flash = 1;
+  }
+
+  // ---- Per-frame update ----
+  function update(dtReal) {
+    const st = LV.st, S0 = LV.S;
+    if (!st.playing || st.done) return;
+    const speed = LV.speed || 1;
+    if (st.hold > 0) {
+      st.hold -= dtReal * speed;
+      if (st.hold <= 0) {
+        st.hold = 0; st.banner = null; st.celebrate = null;
+        const fn = st.afterHold; st.afterHold = null;
+        if (fn) fn();
+      }
+      return;
+    }
+    if (st.phaseShootout) { stepShootout(); return; }
+    const dtMin = (dtReal * speed) / MS_PER_MIN;
+    let remaining = dtMin;
+    let guard = 0;
+    while (remaining > 0 && guard++ < 20 && st.hold <= 0 && !st.done) {
+      if (!st.action) st.action = beginAction(nextAction());
+      const a = st.action;
+      const step = Math.min(remaining, Math.max(0, a.t1 - st.t));
+      st.t += step; remaining -= step;
+      if (st.t >= a.t1 - 1e-6) {
+        st.t = Math.max(st.t, a.t1);
+        st.action = null;
+        finishAction(a);
+        checkBoundaries();
+      }
+    }
+    if (!st.done) $('#live-clock').textContent = st.t >= S0.end ? (S0.m.pens ? 'Pens' : S0.m.et ? 'AET' : 'FT') : minLabel(st.t);
+  }
+
+  function beginAction(a) {
+    const st = LV.st;
+    a.p0 = { x: st.ball.x, y: st.ball.y };
+    if (a.type === 'shot') {
+      const team = a.ev.team, gx = team === 0 ? 1.012 : -0.012;
+      const r = LV.S.r;
+      if (a.ev.kind === 'goal') a.p1 = { x: gx, y: 0.46 + r() * 0.08 };
+      else if (a.ev.kind === 'wide') a.p1 = { x: team === 0 ? 1.03 : -0.03, y: r() < 0.5 ? 0.36 : 0.64 };
+      else a.p1 = null; // saved/blocked: ends at the defender, resolved live
+    }
+    return a;
+  }
+
+  function checkBoundaries() {
+    const st = LV.st, S0 = LV.S;
+    if (!st.htDone && st.t >= 45 && st.hold <= 0) {
+      st.htDone = true;
+      feed(`<b>HT</b> Half-time · ${st.score[0]}–${st.score[1]}`, 'break');
+      startHold('ht', HOLD.ht, { text: 'HALF-TIME', sub: `${st.score[0]} – ${st.score[1]}` });
+      st.afterHold = () => kickoffShape(1);
+      return;
+    }
+    if (S0.m.et && !st.etDone && st.t >= 90 && st.hold <= 0) {
+      st.etDone = true;
+      feed(`<b>90'</b> Level at ${st.score[0]}–${st.score[1]}. Extra time!`, 'break');
+      startHold('et', HOLD.et, { text: 'EXTRA TIME', sub: `${st.score[0]} – ${st.score[1]}` });
+      st.afterHold = () => kickoffShape(0);
+      return;
+    }
+    if (st.t >= S0.end && st.hold <= 0) {
+      if (S0.kicks && !st.phaseShootout && st.kick === 0) {
+        feed(`<b>${S0.end}'</b> Still level. Penalties!`, 'break');
+        st.phaseShootout = true;
+        startHold('et', HOLD.et, { text: 'PENALTIES', sub: '' });
+        return;
+      }
+      endMatch();
+    }
+  }
+
+  function stepShootout() {
+    const st = LV.st, S0 = LV.S;
+    if (st.kick >= S0.kicks.length) { st.phaseShootout = false; endMatch(); return; }
+    const k = S0.kicks[st.kick++];
+    if (k.hit) st.pens[k.team]++;
+    const team = k.team;
+    st.ball = { x: team === 0 ? 0.885 : 0.115, y: 0.5, h: 0 };
+    st.shootout = { team, hit: k.hit, t0: performance.now() };
+    feed(`${k.hit ? '✅' : '❌'} ${esc(nameOf(team, k.taker))} ${k.hit ? 'scores' : 'is denied'} · pens ${st.pens[0]}–${st.pens[1]}`, k.hit ? '' : 'miss');
+    $('#live-score').textContent = `${st.score[0]} – ${st.score[1]} (${st.pens[0]}–${st.pens[1]})`;
+    startHold('pen', HOLD.pen, { text: k.hit ? 'SCORED' : 'SAVED', sub: `${st.pens[0]} – ${st.pens[1]}`, small: true });
+  }
+
+  function endMatch() {
+    const st = LV.st, S0 = LV.S;
+    st.done = true; st.playing = false;
+    const m = S0.m;
+    const fin = m.pens ? `Penalties ${m.pens[0]}–${m.pens[1]}` : m.et ? 'After extra time' : 'Full-time';
+    feed(`<b>FT</b> ${fin} · ${esc(S0.clubs[0].name)} ${m.gh}–${m.ga} ${esc(S0.clubs[1].name)}`, 'break');
+    $('#live-score').textContent = `${m.gh} – ${m.ga}${m.pens ? ` (${m.pens[0]}–${m.pens[1]})` : ''}`;
+    $('#live-clock').textContent = m.pens ? 'Pens' : m.et ? 'AET' : 'FT';
+    showFulltime();
+  }
+
+  // ---- Overlays ----
+  function showPrematch() {
+    const S0 = LV.S, ov = $('#live-overlay');
+    const list = (team) => S0.clubs[team].xi.map((id, i) => `<span><i style="color:${posColor(FORMATIONS[S0.clubs[team].f][i][0])}">${FORMATIONS[S0.clubs[team].f][i][0]}</i>${pkName(id)}</span>`).join('');
+    ov.innerHTML = `<div class="lo-card">
+      <div class="lo-stage">${esc(S0.stage)}</div>
+      <div class="lo-vs"><b style="color:${LV.colors[0]}">${esc(S0.clubs[0].name)}</b><span>vs</span><b style="color:${LV.colors[1]}">${esc(S0.clubs[1].name)}</b></div>
+      <div class="lo-lineups"><div><div class="group-title">${S0.clubs[0].f}</div>${list(0)}</div><div><div class="group-title">${S0.clubs[1].f}</div>${list(1)}</div></div>
+      <div class="lo-actions"><button class="btn btn-gold" data-live="kickoff">▶ Kick off</button>${LV.opts.fromPlayback ? '<button class="btn" data-live="skip">Just show the score</button>' : ''}</div>
+    </div>`;
+    ov.hidden = false;
+  }
+  function showFulltime() {
+    const S0 = LV.S, m = S0.m, ov = $('#live-overlay');
+    const scorers = (team) => {
+      const by = new Map();
+      (team === 0 ? m.eh : m.ea).forEach((e) => { const n = nameOf(team, e.s); by.set(n, (by.get(n) || []).concat(e.m + "'")); });
+      return [...by].map(([n, mins]) => `<div>${esc(n)} <span class="muted">${mins.join(', ')}</span></div>`).join('') || '<div class="muted">—</div>';
+    };
+    // Man of the match: biggest goal contribution, else the winning (or home) keeper.
+    const score = new Map();
+    [[m.eh, 0], [m.ea, 1]].forEach(([list, team]) => list.forEach((e) => {
+      const k = team + ':' + e.s; score.set(k, (score.get(k) || 0) + 2);
+      if (e.a != null) { const ka = team + ':' + e.a; score.set(ka, (score.get(ka) || 0) + 1); }
+    }));
+    let motm = [...score].sort((x, y) => y[1] - x[1])[0];
+    const winTeam = m.winner != null ? (m.winner === m.h ? 0 : 1) : m.gh >= m.ga ? 0 : 1;
+    const [mt, ms] = motm ? motm[0].split(':').map(Number) : [winTeam, 0];
+    const fin = m.pens ? `Penalties ${m.pens[0]}–${m.pens[1]}` : m.et ? 'After extra time' : 'Full-time';
+    ov.innerHTML = `<div class="lo-card">
+      <div class="lo-stage">${fin}</div>
+      <div class="lo-score"><b style="color:${LV.colors[0]}">${esc(S0.clubs[0].name)}</b><span>${m.gh} – ${m.ga}</span><b style="color:${LV.colors[1]}">${esc(S0.clubs[1].name)}</b></div>
+      <div class="lo-lineups"><div>${scorers(0)}</div><div>${scorers(1)}</div></div>
+      <div class="lo-motm">⭐ Man of the Match: <b>${esc(nameOf(mt, ms))}</b> <span class="muted">${esc(S0.clubs[mt].name)}</span></div>
+      <div class="lo-actions"><button class="btn" data-live="replay">↻ Replay</button><button class="btn btn-gold" data-live="close">${LV.opts.fromPlayback ? 'Continue season' : 'Close'}</button></div>
+    </div>`;
+    ov.hidden = false;
+  }
+
+  // ---- Rendering ----
+  function sizeCanvas() {
+    const cv = $('#live-canvas'), wrap = $('#live-wrap');
+    const land = innerWidth >= 700;
+    LV.land = land;
+    let w = wrap.clientWidth;
+    let h = land ? w / 1.6 : w * 1.45;
+    const maxH = innerHeight - (land ? 250 : 290);
+    if (h > maxH) { h = Math.max(240, maxH); w = land ? h * 1.6 : h / 1.45; }
+    const dpr = devicePixelRatio || 1;
+    cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    LV.W = cv.width; LV.H = cv.height; LV.dpr = dpr;
+    const m = Math.min(LV.W, LV.H) * 0.045;
+    LV.m = m;
+    LV.short = land ? LV.H - 2 * m : LV.W - 2 * m;
+    LV.pitchCache = null;
+  }
+  // Normalised pitch coords → canvas pixels.
+  function P(x, y) {
+    const m = LV.m;
+    return LV.land
+      ? [m + x * (LV.W - 2 * m), m + y * (LV.H - 2 * m)]
+      : [m + y * (LV.W - 2 * m), m + (1 - x) * (LV.H - 2 * m)];
+  }
+  function drawPitch(ctx) {
+    if (LV.pitchCache) { ctx.drawImage(LV.pitchCache, 0, 0); return; }
+    const c = document.createElement('canvas');
+    c.width = LV.W; c.height = LV.H;
+    const g = c.getContext('2d');
+    g.fillStyle = '#2f6e2c'; g.fillRect(0, 0, LV.W, LV.H);
+    const rect = (x0, y0, x1, y1, fill) => {
+      const [ax, ay] = P(x0, y0), [bx, by] = P(x1, y1);
+      const x = Math.min(ax, bx), y = Math.min(ay, by), w = Math.abs(bx - ax), h = Math.abs(by - ay);
+      if (fill) { g.fillStyle = fill; g.fillRect(x, y, w, h); } else g.strokeRect(x, y, w, h);
+    };
+    for (let i = 0; i < 14; i++) rect(i / 14, 0, (i + 1) / 14, 1, i % 2 ? '#46963f' : '#3f8a3a');
+    g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = Math.max(1.5, LV.dpr * 1.6);
+    rect(0, 0, 1, 1);
+    rect(0.5, 0, 0.5, 1);
+    for (const side of [0, 1]) {
+      const s = (x) => (side ? 1 - x : x);
+      rect(s(0), 0.205, s(0.157), 0.795);
+      rect(s(0), 0.365, s(0.052), 0.635);
+      rect(s(-0.018), 0.446, s(0), 0.554, 'rgba(255,255,255,.18)');
+      rect(s(-0.018), 0.446, s(0), 0.554);
+      const [px, py] = P(s(0.105), 0.5);
+      g.fillStyle = 'rgba(255,255,255,.85)'; g.beginPath(); g.arc(px, py, LV.dpr * 2, 0, 7); g.fill();
+    }
+    const [cx, cy] = P(0.5, 0.5);
+    g.beginPath(); g.arc(cx, cy, LV.short * 0.135, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(cx, cy, LV.dpr * 2.2, 0, 7); g.fill();
+    LV.pitchCache = c;
+    ctx.drawImage(c, 0, 0);
+  }
+
+  // Where everyone wants to be this frame.
+  function targets(now) {
+    const st = LV.st, b = st.ball;
+    return [0, 1].map((team) => {
+      const poss = st.carrier.team === team;
+      const prog = team === 0 ? b.x : 1 - b.x;
+      const shift = (prog - 0.45) * 0.6 + (poss ? 0.08 : -0.02);
+      const dir = team === 0 ? 1 : -1;
+      return LV.anchors[team].map((a, i) => {
+        const gk = slotLine(team, i) === 'GK';
+        let x, y;
+        if (gk) {
+          x = team === 0 ? 0.03 + clamp(b.x - 0.3, 0, 0.4) * 0.1 : 0.97 - clamp(0.7 - b.x, 0, 0.4) * 0.1;
+          y = 0.5 + (b.y - 0.5) * 0.35;
+        } else {
+          x = a.x + dir * shift;
+          y = a.y + (b.y - a.y) * 0.22;
+        }
+        const ph = LV.phase[team][i];
+        x += Math.sin(now * 0.0011 + ph) * 0.008;
+        y += Math.cos(now * 0.0013 + ph) * 0.01;
+        return { x: clamp(x, 0.015, 0.985), y: clamp(y, 0.03, 0.97) };
+      });
+    });
+  }
+
+  function frame(now) {
+    if (!LV.open) return;
+    const dt = Math.min(64, now - LV.last);
+    LV.last = now;
+    update(dt);
+    const st = LV.st, a = st.action;
+    // Positions ease toward their targets; the ball carrier and nearest presser get special treatment.
+    const T = targets(now);
+    if (st.playing && !st.done && st.hold <= 0) {
+      const c = st.carrier;
+      if (a && a.type === 'dribble') {
+        const p = (st.t - a.t0) / Math.max(1e-6, a.t1 - a.t0);
+        T[c.team][c.slot].x += (c.team === 0 ? 1 : -1) * 0.05 * p;
+      }
+      const pr = nearestOpponent(c.team, st.ball);
+      const tp = T[1 - c.team][pr];
+      tp.x += (st.ball.x - tp.x) * 0.6; tp.y += (st.ball.y - tp.y) * 0.6;
+    }
+    const k = Math.min(1, dt * 0.0045 * Math.sqrt(LV.speed || 1));
+    [0, 1].forEach((team) => LV.pos[team].forEach((p, i) => {
+      const t = T[team][i];
+      p.x += (t.x - p.x) * k; p.y += (t.y - p.y) * k;
+    }));
+    // Ball.
+    if (st.shootout) {
+      const p = clamp((now - st.shootout.t0) / 450, 0, 1);
+      const team = st.shootout.team, gx = team === 0 ? 1.01 : -0.01;
+      const sx = team === 0 ? 0.895 : 0.105;
+      st.ball = { x: sx + (gx - sx) * p, y: 0.5 + (st.shootout.hit ? 0.03 : -0.04) * p, h: 0 };
+      if (p >= 1 && st.hold <= 0) st.shootout = null;
+    } else if (a && st.hold <= 0) {
+      const p = clamp((st.t - a.t0) / Math.max(1e-6, a.t1 - a.t0), 0, 1);
+      if (a.type === 'pass') {
+        const to = LV.pos[a.to.team][a.to.slot];
+        const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+        const dist = Math.hypot(to.x - a.p0.x, to.y - a.p0.y);
+        st.ball = { x: a.p0.x + (to.x - a.p0.x) * e, y: a.p0.y + (to.y - a.p0.y) * e, h: dist > 0.22 ? Math.sin(p * Math.PI) * dist * 0.5 : 0 };
+      } else if (a.type === 'shot') {
+        const opp = 1 - a.ev.team;
+        const end = a.p1 || (a.ev.kind === 'saved' ? LV.pos[opp][0] : LV.pos[opp][nearestOpponent(a.ev.team, st.ball)]);
+        st.ball = { x: a.p0.x + (end.x - a.p0.x) * p, y: a.p0.y + (end.y - a.p0.y) * p, h: Math.sin(p * Math.PI) * 0.04 };
+      } else {
+        const c = LV.pos[st.carrier.team][st.carrier.slot];
+        const lead = st.carrier.team === 0 ? 0.012 : -0.012;
+        st.ball = { x: c.x + lead, y: c.y + 0.01, h: 0 };
+      }
+    }
+    draw(now);
+    LV.raf = requestAnimationFrame(frame);
+  }
+
+  function draw(now) {
+    const cv = $('#live-canvas'), ctx = cv.getContext('2d'), st = LV.st;
+    drawPitch(ctx);
+    const S = LV.short * (LV.land ? 0.12 : 0.15);
+    const items = [];
+    [0, 1].forEach((team) => LV.pos[team].forEach((p, i) => items.push({ team, i, p })));
+    items.sort((x, y) => P(x.p.x, x.p.y)[1] - P(y.p.x, y.p.y)[1]);
+    ctx.imageSmoothingEnabled = false;
+    for (const it of items) {
+      const [x, y] = P(it.p.x, it.p.y);
+      const cel = st.celebrate && st.celebrate.team === it.team && st.celebrate.slot === it.i;
+      const jump = cel ? Math.abs(Math.sin(now * 0.012)) * S * 0.35 : 0;
+      ctx.fillStyle = 'rgba(0,0,0,.28)';
+      ctx.beginPath(); ctx.ellipse(x, y + S * 0.08, S * 0.3, S * 0.1, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = LV.colors[it.team]; ctx.lineWidth = Math.max(2, S * 0.06);
+      ctx.beginPath(); ctx.ellipse(x, y + S * 0.08, S * 0.32, S * 0.12, 0, 0, 7); ctx.stroke();
+      const im = LV.imgs.get(LV.S.clubs[it.team].xi[it.i]);
+      if (im) ctx.drawImage(im, x - S / 2, y - S * 0.88 - jump, S, S);
+      else { ctx.fillStyle = LV.colors[it.team]; ctx.beginPath(); ctx.arc(x, y - S * 0.3, S * 0.18, 0, 7); ctx.fill(); }
+      const carrier = st.carrier.team === it.team && st.carrier.slot === it.i && st.playing && !st.done;
+      if (carrier || cel) {
+        const label = nameOf(it.team, it.i);
+        ctx.font = `700 ${Math.round(11 * LV.dpr)}px Inter, sans-serif`;
+        const tw = ctx.measureText(label).width + 10 * LV.dpr;
+        const ly = y - S * 0.95 - jump - 9 * LV.dpr;
+        ctx.fillStyle = 'rgba(12,14,18,.85)';
+        roundRect(ctx, x - tw / 2, ly - 8 * LV.dpr, tw, 16 * LV.dpr, 5 * LV.dpr); ctx.fill();
+        ctx.fillStyle = LV.colors[it.team]; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(label, x, ly);
+      }
+    }
+    // Ball (with a lofted shadow for long passes).
+    const b = st.ball, [bx, by] = P(b.x, b.y), br = Math.max(3, S * 0.09);
+    ctx.fillStyle = 'rgba(0,0,0,.3)';
+    ctx.beginPath(); ctx.ellipse(bx, by + br * 0.6, br, br * 0.45, 0, 0, 7); ctx.fill();
+    const lift = b.h * LV.short;
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#1b1f26'; ctx.lineWidth = Math.max(1, br * 0.25);
+    ctx.beginPath(); ctx.arc(bx, by - lift, br * (1 + b.h * 2), 0, 7); ctx.fill(); ctx.stroke();
+    // Goal flash + banner.
+    if (st.flash > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${st.flash * 0.45})`; ctx.fillRect(0, 0, LV.W, LV.H);
+      st.flash = Math.max(0, st.flash - 0.04);
+    }
+    if (st.banner) {
+      const big = st.banner.small ? 0.07 : 0.11;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = `700 ${Math.round(LV.short * big)}px "Pixelify Sans", Inter, sans-serif`;
+      const cy = LV.H * 0.42;
+      ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillText(st.banner.text, LV.W / 2 + 3 * LV.dpr, cy + 3 * LV.dpr);
+      ctx.fillStyle = st.banner.team != null ? LV.colors[st.banner.team] : '#fff';
+      ctx.fillText(st.banner.text, LV.W / 2, cy);
+      if (st.banner.sub) {
+        ctx.font = `700 ${Math.round(LV.short * 0.05)}px Inter, sans-serif`;
+        ctx.fillStyle = '#fff'; ctx.fillText(st.banner.sub, LV.W / 2, cy + LV.short * 0.09);
+      }
+    }
+  }
+
+  // ---- Controls ----
+  $('#live-overlay').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-live]');
+    if (!b) return;
+    const act = b.dataset.live;
+    if (act === 'kickoff') {
+      $('#live-overlay').hidden = true;
+      LV.st.playing = true;
+      feed(`<b>KO</b> ${esc(LV.S.clubs[0].name)} vs ${esc(LV.S.clubs[1].name)}. We're under way!`, 'break');
+    } else if (act === 'skip' || act === 'close') closeLive();
+    else if (act === 'replay') { resetMatch(); LV.st.playing = true; feed(`<b>KO</b> Replay: ${esc(LV.S.clubs[0].name)} vs ${esc(LV.S.clubs[1].name)}`, 'break'); }
+  });
+  $('#live-close').addEventListener('click', closeLive);
+  $('#live-play').addEventListener('click', () => {
+    const st = LV.st;
+    if (st.done || !$('#live-overlay').hidden) return;
+    st.playing = !st.playing;
+    $('#live-play').textContent = st.playing ? '⏸' : '▶';
+  });
+  $('#live-speed').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-s]');
+    if (!b) return;
+    LV.speed = +b.dataset.s;
+    $$('#live-speed button').forEach((x) => x.classList.toggle('on', x === b));
+  });
+  $('#live-skip').addEventListener('click', () => {
+    const st = LV.st;
+    if (st.done) return;
+    $('#live-overlay').hidden = true;
+    st.score = [LV.S.m.gh, LV.S.m.ga];
+    st.t = LV.S.end; st.hold = 0; st.banner = null; st.celebrate = null; st.action = null; st.queue = [];
+    st.phaseShootout = false; st.shootout = null;
+    endMatch();
+  });
+  window.addEventListener('resize', () => { if (LV.open) sizeCanvas(); });
+  document.addEventListener('keydown', (e) => {
+    if (!LV.open) return;
+    if (e.key === 'Escape') closeLive();
+    else if (e.key === ' ' && e.target === document.body) { e.preventDefault(); $('#live-play').click(); }
+  });
+  // ▶ buttons anywhere (Games tabs, club pages).
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-watch]');
+    if (!b) return;
+    e.stopPropagation();
+    const [src, mi] = b.dataset.watch.split(':');
+    openLive(src === 'national' ? C.national : C.result, +mi, {});
+  }, true);
 
   // ---------------- Help ----------------
   function openHelp(tab) {

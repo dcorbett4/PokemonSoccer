@@ -531,3 +531,58 @@ button.award:hover { border-color: #3a414d; }
 @media (max-width: 380px) {
   .topbar .mode-btn .mi { display: none; }
 }
+
+/* ---------- Live match viewer ---------- */
+.live-modal { z-index: 60; padding: 12px; }
+.live-card {
+  width: min(1040px, 100%); max-height: calc(100vh - 24px); overflow-y: auto;
+  background: #101318; border: 1px solid var(--border); border-radius: 16px; padding: 10px 14px 14px;
+  display: flex; flex-direction: column; gap: 8px; box-shadow: 0 30px 80px rgba(0,0,0,.6);
+}
+.live-top { display: flex; align-items: center; justify-content: space-between; }
+.live-stage { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.live-board { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; background: #0b0d10; border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; }
+.lb-team { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 800; font-size: 14px; }
+.lb-team.away { justify-content: flex-end; text-align: right; }
+.lb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.lb-mid { display: flex; flex-direction: column; align-items: center; }
+.lb-score { font-family: var(--mono); font-size: 26px; font-weight: 700; line-height: 1; white-space: nowrap; }
+.lb-clock { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--gold); margin-top: 3px; }
+.live-wrap { position: relative; display: flex; justify-content: center; }
+.live-wrap canvas { border-radius: 10px; display: block; max-width: 100%; }
+.live-overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(6,8,10,.62); border-radius: 10px; padding: 12px; overflow-y: auto; }
+.lo-card { width: min(460px, 100%); background: #14171c; border: 1px solid var(--border); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; text-align: center; }
+.lo-stage { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.lo-vs, .lo-score { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; font-size: 15px; }
+.lo-vs span { color: var(--muted); font-size: 12px; }
+.lo-score span { font-family: var(--mono); font-size: 30px; font-weight: 700; }
+.lo-lineups { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; font-size: 12px; max-height: 38vh; overflow-y: auto; }
+.lo-lineups span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lo-lineups i { font-style: normal; font-family: var(--mono); font-size: 10px; font-weight: 700; display: inline-block; width: 30px; }
+.lo-motm { font-size: 13px; }
+.lo-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.lo-actions .btn { width: 100%; }
+.lo-actions .btn:only-child { grid-column: 1 / -1; }
+.live-controls { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.live-controls .seg { width: 150px; }
+.live-feed { display: flex; flex-direction: column; gap: 3px; min-height: 60px; font-size: 13px; }
+.live-feed .lf { background: var(--panel); border-radius: 7px; padding: 5px 9px; animation: tickIn .2s ease-out; }
+.live-feed .lf.goal { background: #1b2a1f; box-shadow: inset 3px 0 0 var(--accent); }
+.live-feed .lf.break { color: var(--muted); }
+.live-feed .lf.miss { color: #c9ced6; }
+.watch-btn {
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--accent); border-radius: 6px;
+  font-size: 10px; padding: 1px 6px; line-height: 1.5; cursor: pointer;
+}
+.watch-btn:hover { border-color: var(--accent); }
+.matches.watchable .m { grid-template-columns: 22px 18px 1fr auto 26px; }
+.lv-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.lv-actions .btn:only-child { grid-column: 1 / -1; }
+#lv-watch.on { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 700px) {
+  .live-modal { padding: 0; }
+  .live-card { max-height: 100vh; border-radius: 0; padding: 8px 10px 12px; }
+  .lb-score { font-size: 22px; }
+  .lb-team { font-size: 12.5px; }
+}

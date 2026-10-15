@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&family=Pixelify+Sans:wght@700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=e5965eff46" />
+  <link rel="stylesheet" href="styles.css?v=419794d268" />
 </head>
 <body>
   <header class="topbar">
@@ -270,6 +270,7 @@
             <li>You play 19 clubs home and away. Each club has its own squad of Pokémon, from weak to very strong.</li>
             <li>Watch it play out live or hit <b>Skip</b>. Win = 3 points, draw = 1.</li>
             <li>Afterwards, check the <b>Squad</b>, <b>Team</b>, <b>Table</b>, <b>Awards</b> and <b>Games</b> tabs. Tap any club to see its squad and results.</li>
+            <li><b>📺 Watch live:</b> tap ▶ next to any game to watch it play out on the pitch with commentary, or turn on <b>Watch next match</b> during the season. Victory Road knockout games are offered live automatically.</li>
             <li>Each of your players gets a <b>performance rating</b> for the season, based on what they actually did.</li>
           </ul>
           <p class="muted">A perfect 38–0 is extremely rare. Even an elite squad pulls it off only about 1 run in 70.</p>
@@ -348,6 +349,31 @@
     </div>
   </div>
 
+  <!-- Live match -->
+  <div class="modal live-modal" id="live" hidden>
+    <div class="live-card">
+      <div class="live-top">
+        <span class="live-stage" id="live-stage">Matchday</span>
+        <button class="icon-btn" id="live-close" aria-label="Close">✕</button>
+      </div>
+      <div class="live-board">
+        <div class="lb-team home"><span class="lb-dot"></span><span class="lb-name" id="live-hname"></span></div>
+        <div class="lb-mid"><span class="lb-score" id="live-score">0 – 0</span><span class="lb-clock" id="live-clock">0'</span></div>
+        <div class="lb-team away"><span class="lb-name" id="live-aname"></span><span class="lb-dot"></span></div>
+      </div>
+      <div class="live-wrap" id="live-wrap">
+        <canvas id="live-canvas"></canvas>
+        <div class="live-overlay" id="live-overlay" hidden></div>
+      </div>
+      <div class="live-controls">
+        <button class="btn" id="live-play" title="Pause / play (space)">⏸</button>
+        <div class="seg small" id="live-speed"><button data-s="1" class="on">1×</button><button data-s="2">2×</button><button data-s="4">4×</button></div>
+        <button class="btn" id="live-skip">⏭ Full-time</button>
+      </div>
+      <div class="live-feed" id="live-feed"></div>
+    </div>
+  </div>
+
   <!-- Challenges -->
   <div class="modal" id="vs-modal" hidden>
     <div class="modal-card vs-modal-card">
@@ -381,6 +407,6 @@
   <div class="toast" id="toast" hidden></div>
 
   <script src="data.js?v=a386ee55ba"></script>
-  <script src="app.js?v=7d6806144e"></script>
+  <script src="app.js?v=764d2088e0"></script>
 </body>
 </html>

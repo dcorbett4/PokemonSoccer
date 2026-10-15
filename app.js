@@ -2467,6 +2467,8 @@
     LV.anchors = [anchorsFor(S0.clubs[0], 0), anchorsFor(S0.clubs[1], 1)];
     LV.pos = LV.anchors.map((a) => a.map((p) => ({ x: p.x, y: p.y })));
     LV.phase = S0.clubs.map((c) => c.xi.map(() => Math.random() * 6.28));
+    LV.agility = S0.clubs.map((c) => c.xi.map((id) => clamp(0.75 + BY_ID.get(id).s.spe / 220, 0.8, 1.45)));
+    LV.clock = 0;
     $('#live-score').textContent = '0 – 0';
     $('#live-clock').textContent = "0'";
     $('#live-overlay').hidden = true;
@@ -2805,42 +2807,67 @@
     ctx.drawImage(c, 0, 0);
   }
 
-  // Where everyone wants to be this frame.
-  function targets(now) {
-    const st = LV.st, b = st.ball;
+  // Where everyone wants to be this frame. Players stay anchored to their formation like a disciplined
+  // team, with layered movement on top: personal drift, a shape that widens in possession and squeezes
+  // without it, overlapping full-backs, timed striker runs and midfielders dropping to collect.
+  function targets() {
+    const st = LV.st, b = st.ball, tc = LV.clock;
+    const live = st.playing && !st.done && st.hold <= 0;
     return [0, 1].map((team) => {
       const poss = st.carrier.team === team;
-      const prog = team === 0 ? b.x : 1 - b.x;
+      const prog = team === 0 ? b.x : 1 - b.x; // how far the ball is toward this team's attacking goal
       const shift = (prog - 0.45) * 0.6 + (poss ? 0.08 : -0.02);
       const dir = team === 0 ? 1 : -1;
+      const f = FORMATIONS[LV.S.clubs[team].f];
       return LV.anchors[team].map((a, i) => {
-        const gk = slotLine(team, i) === 'GK';
+        const pos = f[i][0], line = POS[pos].line, ph = LV.phase[team][i];
         let x, y;
-        if (gk) {
+        if (line === 'GK') {
           x = team === 0 ? 0.03 + clamp(b.x - 0.3, 0, 0.4) * 0.1 : 0.97 - clamp(0.7 - b.x, 0, 0.4) * 0.1;
-          y = 0.5 + (b.y - 0.5) * 0.35;
-        } else {
-          x = a.x + dir * shift;
-          y = a.y + (b.y - a.y) * 0.22;
+          y = 0.5 + (b.y - 0.5) * 0.35 + Math.sin(tc * 0.0011 + ph) * 0.01;
+          return { x, y };
         }
-        const ph = LV.phase[team][i];
-        x += Math.sin(now * 0.0011 + ph) * 0.008;
-        y += Math.cos(now * 0.0013 + ph) * 0.01;
-        return { x: clamp(x, 0.015, 0.985), y: clamp(y, 0.03, 0.97) };
+        x = a.x + dir * shift;
+        // Shape breathes: wider with the ball, narrower and more compact without it.
+        y = 0.5 + (a.y - 0.5) * (poss ? 1.1 : 0.86);
+        if (!poss) x -= dir * (line === 'FWD' ? 0.04 : line === 'MID' ? 0.015 : 0);
+        y += (b.y - y) * (poss ? 0.14 : 0.28);
+        // Personal drift: two layered slow waves, bigger for attackers than defenders.
+        const amp = line === 'FWD' ? 0.032 : line === 'MID' ? 0.026 : 0.016;
+        x += (Math.sin(tc * 0.00071 + ph) * 0.6 + Math.sin(tc * 0.0017 + ph * 2.3) * 0.4) * amp;
+        y += (Math.cos(tc * 0.00063 + ph * 1.7) * 0.6 + Math.sin(tc * 0.0021 + ph) * 0.4) * amp * 1.2;
+        if (live && poss && prog > 0.45) {
+          const push = (prog - 0.45) * 2;
+          if (/^(LB|RB|LWB|RWB)$/.test(pos)) x += dir * 0.08 * push; // overlap
+          if (/^(LW|RW|LM|RM)$/.test(pos)) y += Math.sign(a.y - 0.5) * 0.03 * push; // hug the line
+          if (line === 'FWD') {
+            const run = Math.max(0, Math.sin(tc * 0.0009 + ph * 3)); // a run in behind every few seconds
+            x += dir * 0.07 * run * run;
+            if (pos === 'ST') y += Math.sin(ph * 5) * 0.06 * run; // on the diagonal
+          }
+        }
+        if (live && poss && prog < 0.35 && (pos === 'CDM' || pos === 'CM')) {
+          x -= dir * 0.04; // drop deep to collect from the back line
+          y += (b.y - y) * 0.2;
+        }
+        return { x, y };
       });
     });
   }
 
   function frame(now) {
     if (!LV.open) return;
-    const dt = Math.min(64, now - LV.last);
-    LV.last = now;
+    const dt = clamp(now - LV.last, 0, 64); // frame timestamps can land just before LV.last
+    LV.last = Math.max(LV.last, now);
     update(dt);
     const st = LV.st, a = st.action;
-    // Positions ease toward their targets; the ball carrier and nearest presser get special treatment.
-    const T = targets(now);
-    if (st.playing && !st.done && st.hold <= 0) {
-      const c = st.carrier;
+    // Movement runs on match time, so it speeds up with the playback speed (and idles during breaks).
+    const live = st.playing && !st.done && st.hold <= 0;
+    LV.clock += dt * (live ? (LV.speed || 1) : 0.5);
+    // Positions ease toward their targets; the carrier, presser, supporters and receiver get extra intent.
+    const T = targets();
+    if (live) {
+      const c = st.carrier, cp = LV.pos[c.team][c.slot];
       if (a && a.type === 'dribble') {
         const p = (st.t - a.t0) / Math.max(1e-6, a.t1 - a.t0);
         T[c.team][c.slot].x += (c.team === 0 ? 1 : -1) * 0.05 * p;
@@ -2848,11 +2875,28 @@
       const pr = nearestOpponent(c.team, st.ball);
       const tp = T[1 - c.team][pr];
       tp.x += (st.ball.x - tp.x) * 0.6; tp.y += (st.ball.y - tp.y) * 0.6;
+      // The two nearest outfield teammates drift toward the carrier to offer a pass (without crowding).
+      LV.pos[c.team]
+        .map((p, i) => ({ i, d: Math.hypot(p.x - cp.x, p.y - cp.y) }))
+        .filter((o) => o.i !== c.slot && slotLine(c.team, o.i) !== 'GK')
+        .sort((m, n) => m.d - n.d).slice(0, 2)
+        .forEach(({ i, d }) => {
+          if (d < 0.08) return;
+          const t = T[c.team][i];
+          t.x += (cp.x - t.x) * 0.22; t.y += (cp.y - t.y) * 0.22;
+        });
+      // The receiver steps toward an incoming pass.
+      if (a && a.type === 'pass') {
+        const t = T[a.to.team][a.to.slot];
+        t.x += (a.p0.x - t.x) * 0.12; t.y += (a.p0.y - t.y) * 0.12;
+      }
     }
     const k = Math.min(1, dt * 0.0045 * Math.sqrt(LV.speed || 1));
     [0, 1].forEach((team) => LV.pos[team].forEach((p, i) => {
       const t = T[team][i];
-      p.x += (t.x - p.x) * k; p.y += (t.y - p.y) * k;
+      const ki = Math.min(1, k * LV.agility[team][i]); // quicker Pokémon get there faster
+      p.x += (clamp(t.x, 0.015, 0.985) - p.x) * ki;
+      p.y += (clamp(t.y, 0.03, 0.97) - p.y) * ki;
     }));
     // Ball.
     if (st.shootout) {

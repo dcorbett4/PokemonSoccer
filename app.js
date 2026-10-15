@@ -981,7 +981,8 @@
     const canGoNational = qualifies() && C.phase === 'result' && !C.national;
     $('#ch-national').hidden = !canGoNational || !!seasonTimer;
     $('#ch-again').hidden = !!seasonTimer;
-    $('#ch-hof').hidden = !!seasonTimer || !(C.national && C.national.finish === 'Champion');
+    const wonSomething = (C.national && C.national.finish === 'Champion') || (C.result && C.result.me.position === 1);
+    $('#ch-hof').hidden = !!seasonTimer || !(C.phase === 'result' || C.phase === 'national') || !wonSomething;
     // Dailies are already shared by everyone, so they don't get a challenge link.
     $('#ch-challenge').hidden = !!seasonTimer || !(C.phase === 'result' || C.phase === 'national') || !C.seed || !!C.daily;
     $('#ch-challenge').textContent = C.vs ? 'Challenge someone else' : 'Challenge a friend';
@@ -1172,7 +1173,7 @@
       delay: (i) => (C.national.games[i] && !C.national.games[i].short.startsWith('G') ? 1100 : 380),
       onFinish: () => {
         const fin = C.national.finish;
-        if (fin === 'Champion') { confetti(360); showHallOfFame(); } else if (newBest) toast(`New best finish: ${NAT_LABEL[fin]}`);
+        if (fin === 'Champion') { confetti(360); showHallOfFame(photoFromRun('vr')); } else if (newBest) toast(`New best finish: ${NAT_LABEL[fin]}`);
         recordSeason();
       },
     });
@@ -1855,85 +1856,138 @@
   }
   function pad(arr, n) { while (arr.length < n) arr.push(null); return arr; }
 
-  let careerSort = 'g';
+  let careerSort = 'g', recordsTab = 'overview', seasonFilter = 'all';
+  const isDailyEntry = (e) => !!e.daily;
+  const entryKind = (e) => (e.mode === 'regions' ? 'regions' : e.daily ? 'daily' : 'classic');
+  // Ranking for "best runs": Victory Road finish first, then points, goal difference, goals.
+  const runScore = (e) => [e.nat ? VR_RANK[e.nat.finish] || 0 : 0, e.league.pts, e.league.gf - e.league.ga, e.league.gf];
+  const byRun = (a, b) => { const x = runScore(a), y = runScore(b); for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return y[i] - x[i]; return b.date - a.date; };
+
+  function seasonCard(e, lead = '') {
+    const L = e.league;
+    const natTxt = (e.nat ? ` · VR: ${NAT_LABEL[e.nat.finish]}` : '')
+      + (e.vs ? ` · ${e.vs.res > 0 ? 'beat' : e.vs.res < 0 ? 'lost to' : 'tied'} ${esc(e.vs.n)}` : '');
+    const awardLine = (lbl, a, suffix) => (a ? `<div class="kv wide${a.me ? ' mine' : ''}"><span>${lbl}</span><b>${pkName(a.id)} <small>${esc(a.club)} · ${a.v}${suffix}</small></b></div>` : '');
+    const photos = [L.pos === 1 ? `<button class="btn" data-photo="${e.id}:league">League title photo</button>` : '',
+      e.nat && e.nat.finish === 'Champion' ? `<button class="btn btn-gold" data-photo="${e.id}:vr">Hall of Fame photo</button>` : ''].filter(Boolean);
+    return `<details class="season"><summary>${lead}<span class="s-main">${L.pos === 1 ? '<span class="s-trophy">Champions</span> ' : ''}${modeLabel(e)} <span class="muted">· ${e.f}</span></span>
+        <span class="s-rec">${L.w}–${L.d}–${L.l} · ${L.pts} pts · ${ord(L.pos)}${natTxt}</span><span class="s-date muted">${dateLabel(e.date)}</span></summary>
+      <div class="season-body">
+        ${photos.length ? `<div class="photo-row">${photos.join('')}</div>` : ''}
+        <div class="kv-grid">
+          <div class="kv"><span>Points</span><b>${L.pts}</b></div><div class="kv"><span>GF / GA</span><b>${L.gf} / ${L.ga}</b></div>
+          <div class="kv"><span>Champions</span><b>${esc(L.champion)}</b></div><div class="kv"><span>Unbeaten run</span><b>${L.unbeaten}</b></div>
+          ${e.nat ? `<div class="kv"><span>Victory Road</span><b>${e.nat.w}–${e.nat.d}–${e.nat.l}</b></div><div class="kv"><span>VR winners</span><b>${esc(e.nat.champion)}</b></div>` : ''}
+        </div>
+        <div class="group-title">League awards</div>
+        ${awardLine('Golden Boot', e.awards.boot, 'G')}${awardLine('Top Assists', e.awards.assists, 'A')}
+        ${awardLine('Player of the Season', e.awards.pots, ' RTG')}${awardLine('Golden Glove', e.awards.glove, ' CS')}
+        ${e.natAwards ? `<div class="group-title">Victory Road awards</div>
+          ${awardLine('Golden Boot', e.natAwards.boot, 'G')}${awardLine('Player of the Tournament', e.natAwards.pots, ' RTG')}` : ''}
+        <div class="group-title">Your squad</div>
+        <div class="table-wrap"><table class="league squad">
+          <tr><th class="team">Player</th><th>RTG</th><th>G</th><th>A</th><th>CS</th></tr>
+          ${e.squad.slice().sort((a, b) => b.rtg - a.rtg).map((p) => `<tr><td class="team"><span class="ppos" style="color:${posColor(p.pos)}">${p.pos}</span>${p.id ? pkName(p.id) : '?'}</td><td><b style="color:${perfColor(p.rtg)}">${p.rtg}</b></td><td>${p.g}</td><td>${p.a}</td><td>${p.cs}</td></tr>`).join('')}
+        </table></div>
+      </div></details>`;
+  }
+
   function renderRecords() {
     const body = $('#hist-body');
     if (!HIST.length) {
-      body.innerHTML = '<div class="card-box"><div class="box-title">No seasons yet</div><p class="muted small-text">Finish a 38–0 Challenge or Region League season and it will show up here with its awards, records and your players\' career stats.</p></div>';
+      body.innerHTML = '<div class="card-box"><div class="box-title">No seasons yet</div><p class="muted small-text">Finish a 38–0 Challenge, Daily or Region League season and it will show up here with its awards, records and your players\' career stats.</p></div>';
       return;
     }
     const n = (f) => HIST.filter(f).length;
     const tile = (k, v) => `<div class="stat"><div class="stat-k">${k}</div><div class="stat-v">${v}</div></div>`;
-    const myAward = (k) => HIST.reduce((t, e) => t + [e.awards, e.natAwards].filter((s) => s && s[k] && s[k].me).length, 0);
+    const myAward = (k) => HIST.reduce((t, e) => t + [e.awards, e.natAwards].filter((x) => x && x[k] && x[k].me).length, 0);
     const cabinet = `<div class="cabinet">
       ${tile('Seasons', HIST.length)}${tile('League titles', n((e) => e.league.pos === 1))}${tile('Victory Road titles', n((e) => e.nat && e.nat.finish === 'Champion'))}
       ${tile('Invincibles', n((e) => e.league.l === 0))}${tile('Perfect 38–0', n((e) => e.league.w === 38))}${tile('Golden Boots', myAward('boot'))}
     </div>`;
+    const tabs = [['overview', 'Overview'], ['best', 'Best runs'], ['trophies', 'Trophies'], ['careers', 'Careers'], ['seasons', 'Seasons']];
+    let content = '';
 
-    const maxBy = (arr, f) => arr.reduce((b, x) => (b == null || f(x) > f(b) ? x : b), null);
-    const where = (e) => `${modeLabel(e)} · ${dateLabel(e.date)}`;
-    const recRow = (k, v, e) => `<div class="kv wide"><span>${k}</span><b>${v} <small>${where(e)}</small></b></div>`;
-    const players = HIST.flatMap((e) => e.squad.filter((p) => p.id).map((p) => ({ e, p })));
-    const best = {
-      pts: maxBy(HIST, (e) => e.league.pts), gf: maxBy(HIST, (e) => e.league.gf), ga: maxBy(HIST, (e) => -e.league.ga),
-      gd: maxBy(HIST, (e) => e.league.gf - e.league.ga), unb: maxBy(HIST, (e) => e.league.unbeaten),
-      g: maxBy(players, (x) => x.p.g), a: maxBy(players, (x) => x.p.a), r: maxBy(players, (x) => x.p.rtg),
-    };
-    const records = `
-      ${recRow('Most points', best.pts.league.pts, best.pts)}
-      ${recRow('Most goals scored', best.gf.league.gf, best.gf)}
-      ${recRow('Fewest conceded', best.ga.league.ga, best.ga)}
-      ${recRow('Best goal difference', sgn(best.gd.league.gf - best.gd.league.ga), best.gd)}
-      ${recRow('Longest unbeaten run', best.unb.league.unbeaten + ' games', best.unb)}
-      ${recRow('Most goals by a player', `${pkName(best.g.p.id)} · ${best.g.p.g}`, best.g.e)}
-      ${recRow('Most assists by a player', `${pkName(best.a.p.id)} · ${best.a.p.a}`, best.a.e)}
-      ${recRow('Highest player rating', `${pkName(best.r.p.id)} · ${best.r.p.rtg}`, best.r.e)}`;
-
-    const cs = careers();
-    const sorters = { g: (c) => c.g * 1000 + c.a, a: (c) => c.a * 1000 + c.g, avg: (c) => c.avg * 100 + c.seasons, seasons: (c) => c.seasons * 1000 + c.g };
-    cs.sort((x, y) => sorters[careerSort](y) - sorters[careerSort](x));
-    const careerTable = `<div class="seg small" id="career-seg">${[['g', 'Goals'], ['a', 'Assists'], ['avg', 'Rating'], ['seasons', 'Seasons']].map(([k, l]) => `<button data-sort="${k}" class="${k === careerSort ? 'on' : ''}">${l}</button>`).join('')}</div>
-      <div class="table-wrap"><table class="league squad">
-        <tr><th>#</th><th class="team">Pokémon</th><th title="Seasons">S</th><th>G</th><th>A</th><th title="Average rating">RTG</th><th title="Awards won">AWD</th></tr>
-        ${cs.slice(0, 15).map((c, i) => `<tr><td>${i + 1}</td><td class="team"><span class="ppos" style="color:${LINES[c.line].color}">${c.line}</span>${pkName(c.id)}</td><td>${c.seasons}</td><td>${c.g}</td><td>${c.a}</td><td><b style="color:${perfColor(c.avg)}">${c.avg}</b></td><td>${c.awards || ''}</td></tr>`).join('')}
-      </table></div>`;
-
-    const awardLine = (icon, lbl, a, suffix) => (a ? `<div class="kv wide${a.me ? ' mine' : ''}"><span>${lbl}</span><b>${pkName(a.id)} <small>${esc(a.club)} · ${a.v}${suffix}</small></b></div>` : '');
-    const seasons = HIST.map((e) => {
-      const L = e.league;
-      const natTxt = (e.nat ? ` · VR: ${NAT_LABEL[e.nat.finish]}` : '')
-        + (e.vs ? ` · ${e.vs.res > 0 ? 'beat' : e.vs.res < 0 ? 'lost to' : 'tied'} ${esc(e.vs.n)}` : '');
-      const trophy = L.pos === 1 ? 'Champions · ' : '';
-      return `<details class="season"><summary><span class="s-main">${trophy}${modeLabel(e)} <span class="muted">· ${e.f}</span></span>
-          <span class="s-rec">${L.w}–${L.d}–${L.l} · ${ord(L.pos)}${natTxt}</span><span class="s-date muted">${dateLabel(e.date)}</span></summary>
-        <div class="season-body">
-          <div class="kv-grid">
-            <div class="kv"><span>Points</span><b>${L.pts}</b></div><div class="kv"><span>GF / GA</span><b>${L.gf} / ${L.ga}</b></div>
-            <div class="kv"><span>Champions</span><b>${esc(L.champion)}</b></div><div class="kv"><span>Unbeaten run</span><b>${L.unbeaten}</b></div>
-            ${e.nat ? `<div class="kv"><span>Victory Road</span><b>${e.nat.w}–${e.nat.d}–${e.nat.l}</b></div><div class="kv"><span>VR winners</span><b>${esc(e.nat.champion)}</b></div>` : ''}
-          </div>
-          <div class="group-title">League awards</div>
-          ${awardLine('', 'Golden Boot', e.awards.boot, 'G')}${awardLine('', 'Top Assists', e.awards.assists, 'A')}
-          ${awardLine('', 'Player of the Season', e.awards.pots, ' RTG')}${awardLine('', 'Golden Glove', e.awards.glove, ' CS')}
-          ${e.natAwards ? `<div class="group-title">Victory Road awards</div>
-            ${awardLine('', 'Golden Boot', e.natAwards.boot, 'G')}${awardLine('', 'Player of the Tournament', e.natAwards.pots, ' RTG')}` : ''}
-          <div class="group-title">Your squad</div>
-          <div class="table-wrap"><table class="league squad">
-            <tr><th class="team">Player</th><th>RTG</th><th>G</th><th>A</th><th>CS</th></tr>
-            ${e.squad.slice().sort((a, b) => b.rtg - a.rtg).map((p) => `<tr><td class="team"><span class="ppos" style="color:${posColor(p.pos)}">${p.pos}</span>${p.id ? pkName(p.id) : '?'}</td><td><b style="color:${perfColor(p.rtg)}">${p.rtg}</b></td><td>${p.g}</td><td>${p.a}</td><td>${p.cs}</td></tr>`).join('')}
-          </table></div>
-        </div></details>`;
-    }).join('');
+    if (recordsTab === 'overview') {
+      const maxBy = (arr, f) => arr.reduce((b, x) => (b == null || f(x) > f(b) ? x : b), null);
+      const where = (e) => `${modeLabel(e)} · ${dateLabel(e.date)}`;
+      const recRow = (k, v, e) => `<div class="kv wide"><span>${k}</span><b>${v} <small>${where(e)}</small></b></div>`;
+      const players = HIST.flatMap((e) => e.squad.filter((x) => x.id).map((x) => ({ e, p: x })));
+      const best = {
+        pts: maxBy(HIST, (e) => e.league.pts), gf: maxBy(HIST, (e) => e.league.gf), ga: maxBy(HIST, (e) => -e.league.ga),
+        gd: maxBy(HIST, (e) => e.league.gf - e.league.ga), unb: maxBy(HIST, (e) => e.league.unbeaten),
+        g: maxBy(players, (x) => x.p.g), a: maxBy(players, (x) => x.p.a), r: maxBy(players, (x) => x.p.rtg),
+      };
+      const titles = (k) => HIST.filter((e) => entryKind(e) === k && e.league.pos === 1).length;
+      content = `<div class="records">
+        ${recRow('Most points', best.pts.league.pts, best.pts)}
+        ${recRow('Most goals scored', best.gf.league.gf, best.gf)}
+        ${recRow('Fewest conceded', best.ga.league.ga, best.ga)}
+        ${recRow('Best goal difference', sgn(best.gd.league.gf - best.gd.league.ga), best.gd)}
+        ${recRow('Longest unbeaten run', best.unb.league.unbeaten + ' games', best.unb)}
+        ${recRow('Most goals by a player', `${pkName(best.g.p.id)} · ${best.g.p.g}`, best.g.e)}
+        ${recRow('Most assists by a player', `${pkName(best.a.p.id)} · ${best.a.p.a}`, best.a.e)}
+        ${recRow('Highest player rating', `${pkName(best.r.p.id)} · ${best.r.p.rtg}`, best.r.e)}
+      </div>
+      <div class="group-title">League titles by mode</div>
+      <div class="kv-grid">
+        <div class="kv"><span>38–0 Challenge</span><b>${titles('classic')}</b></div><div class="kv"><span>Daily</span><b>${titles('daily')}</b></div>
+        <div class="kv"><span>Region League</span><b>${titles('regions')}</b></div><div class="kv"><span>Victory Road</span><b>${n((e) => e.nat && e.nat.finish === 'Champion')}</b></div>
+      </div>`;
+    } else if (recordsTab === 'best') {
+      const top = HIST.slice().sort(byRun).slice(0, 10);
+      content = `<p class="muted small-text">Your top 10 seasons: Victory Road finish first, then points and goal difference.</p>
+        <div class="seasons">${top.map((e, i) => seasonCard(e, `<span class="s-rank">${i + 1}</span>`)).join('')}</div>`;
+    } else if (recordsTab === 'trophies') {
+      const list = [];
+      HIST.forEach((e) => {
+        if (e.nat && e.nat.finish === 'Champion') list.push({ e, kind: 'vr', label: 'Victory Road Champions', sub: `${REGION[e.home]} · Victory Road ${e.nat.w}–${e.nat.d}–${e.nat.l}` });
+        if (e.league.pos === 1) list.push({ e, kind: 'league', label: `${modeLabel(e)} Champions`, sub: `${e.league.w}–${e.league.d}–${e.league.l} · ${e.league.pts} pts` });
+      });
+      list.sort((a, b) => b.e.date - a.e.date || (a.kind === 'vr' ? -1 : 1));
+      content = list.length
+        ? `<div class="trophies">${list.map((t) => {
+            const pots = t.kind === 'vr' ? (t.e.natAwards && t.e.natAwards.pots) : t.e.awards.pots;
+            return `<div class="trophy-row${t.kind === 'vr' ? ' vr' : ''}">
+              <div class="tr-main"><span class="tr-label">${t.label}</span><span class="tr-sub">${esc(t.sub)} · ${t.e.f} · ${dateLabel(t.e.date)}</span>
+              ${pots ? `<span class="tr-sub">Star: <b>${pkName(pots.id)}</b>${pots.me ? '' : ` <span class="muted">(${esc(pots.club)})</span>`}</span>` : ''}</div>
+              <button class="btn${t.kind === 'vr' ? ' btn-gold' : ''}" data-photo="${t.e.id}:${t.kind}">View photo</button>
+            </div>`;
+          }).join('')}</div>`
+        : '<p class="muted small-text">No titles yet. Win a league (or Victory Road) and the trophy, with its championship photo, will be kept here.</p>';
+    } else if (recordsTab === 'careers') {
+      const cs = careers();
+      const sorters = { g: (c) => c.g * 1000 + c.a, a: (c) => c.a * 1000 + c.g, avg: (c) => c.avg * 100 + c.seasons, seasons: (c) => c.seasons * 1000 + c.g };
+      cs.sort((x, y) => sorters[careerSort](y) - sorters[careerSort](x));
+      content = `<div class="seg small" id="career-seg">${[['g', 'Goals'], ['a', 'Assists'], ['avg', 'Rating'], ['seasons', 'Seasons']].map(([k, l]) => `<button data-sort="${k}" class="${k === careerSort ? 'on' : ''}">${l}</button>`).join('')}</div>
+        <div class="table-wrap"><table class="league squad">
+          <tr><th>#</th><th class="team">Pokémon</th><th title="Seasons">S</th><th>G</th><th>A</th><th title="Average rating">RTG</th><th title="Awards won">AWD</th></tr>
+          ${cs.slice(0, 25).map((c, i) => `<tr><td>${i + 1}</td><td class="team"><span class="ppos" style="color:${LINES[c.line].color}">${c.line}</span>${pkName(c.id)}</td><td>${c.seasons}</td><td>${c.g}</td><td>${c.a}</td><td><b style="color:${perfColor(c.avg)}">${c.avg}</b></td><td>${c.awards || ''}</td></tr>`).join('')}
+        </table></div>`;
+    } else {
+      const list = HIST.filter((e) => seasonFilter === 'all' || entryKind(e) === seasonFilter);
+      content = `<div class="seg small" id="season-filter">${[['all', 'All'], ['classic', '38–0'], ['daily', 'Daily'], ['regions', 'Regions']].map(([k, l]) => `<button data-sfilter="${k}" class="${k === seasonFilter ? 'on' : ''}">${l}</button>`).join('')}</div>
+        ${list.length ? `<div class="seasons">${list.map((e) => seasonCard(e)).join('')}</div>` : '<p class="muted small-text">No seasons in this mode yet.</p>'}`;
+    }
 
     body.innerHTML = `${cabinet}
-      <div class="label-row"><span class="label">All-time records</span></div><div class="records">${records}</div>
-      <div class="label-row"><span class="label">Pokémon careers</span></div>${careerTable}
-      <div class="label-row"><span class="label">Seasons</span></div><div class="seasons">${seasons}</div>`;
+      <div class="tabs rec-tabs">${tabs.map(([k, l]) => `<button data-rtab="${k}" class="${k === recordsTab ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="rec-body">${content}</div>`;
   }
   $('#hist-body').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-sort]');
-    if (!b) return;
-    careerSort = b.dataset.sort; renderRecords();
+    const ph = e.target.closest('[data-photo]');
+    if (ph) {
+      const [id, kind] = ph.dataset.photo.split(':');
+      const entry = HIST.find((x) => String(x.id) === id);
+      if (entry) showHallOfFame(photoFromEntry(entry, kind));
+      return;
+    }
+    const t = e.target.closest('[data-rtab]'), f = e.target.closest('[data-sfilter]'), b = e.target.closest('[data-sort]');
+    if (t) recordsTab = t.dataset.rtab;
+    else if (f) seasonFilter = f.dataset.sfilter;
+    else if (b) careerSort = b.dataset.sort;
+    else return;
+    renderRecords();
   });
   $('#hist-export').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify({ app: 'pokemon-starting-xi', version: 1, history: HIST, stats: ST, regionStats: SR }, null, 1)], { type: 'application/json' });
@@ -1987,8 +2041,8 @@
     const url = location.origin + location.pathname;
     const text = shareText();
     let blob = null;
-    const champ = C.national && C.national.finish === 'Champion';
-    try { blob = await new Promise((r) => (champ ? hallOfFameCanvas() : buildImage()).then((c) => c.toBlob(r, 'image/png'))); } catch { /* image is optional */ }
+    const champ = (C.national && C.national.finish === 'Champion') || (C.result && C.result.me.position === 1);
+    try { blob = await new Promise((r) => (champ ? hallOfFameCanvas(photoFromRun()) : buildImage()).then((c) => c.toBlob(r, 'image/png'))); } catch { /* image is optional */ }
     const file = blob ? new File([blob], 'pokemon-starting-xi.png', { type: 'image/png' }) : null;
     try {
       if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -2028,7 +2082,35 @@
     }));
   }
 
-  async function hallOfFameCanvas() {
+  const photoDate = (t) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).replace(',', '');
+  function photoText(kind, mode, home, daily, date, f) {
+    const where = kind === 'vr' ? REGION[home] : mode === 'regions' ? `${REGION[home]} League` : daily ? `Daily #${daily}` : '38–0 Challenge';
+    return {
+      title: kind === 'vr' ? 'Victory Road Champion! Congratulations!' : 'League Champion! Congratulations!',
+      footer: `${where}  ·  ${photoDate(date)}  ·  ${f}`.toUpperCase(),
+    };
+  }
+  // The current run's photo: Victory Road if won, otherwise the league title.
+  function photoFromRun(kind) {
+    const k = kind || (C.national && C.national.finish === 'Champion' ? 'vr' : 'league');
+    const all = C.result.games.concat(k === 'vr' && C.national ? C.national.games : []);
+    const pr = hasGoalData(C.result) ? perfRatings(all) : C.xi.map(() => 0);
+    const saved = HIST.find((e) => e.id === C.runId);
+    const t = photoText(k, C.mode, C.home, C.daily, saved ? saved.date : Date.now(), C.f);
+    return Object.assign(t, {
+      squad: C.xi.map((id, i) => ({ id, r: pr[i] })),
+      share: k === 'vr' ? `🏆 My Pokémon Starting XI conquered Victory Road!` : `🏆 My Pokémon Starting XI won the ${t.footer.split('  ·  ')[0].toLowerCase().replace(/(^|\s)\S/g, (m) => m.toUpperCase())}!`,
+    });
+  }
+  function photoFromEntry(e, kind) {
+    const t = photoText(kind, e.mode, e.home, e.daily, e.date, e.f);
+    return Object.assign(t, {
+      squad: e.squad.map((p) => ({ id: p.id, r: p.rtg })),
+      share: kind === 'vr' ? '🏆 My Pokémon Starting XI conquered Victory Road!' : `🏆 My Pokémon Starting XI won the ${modeLabel(e)} (${e.league.w}–${e.league.d}–${e.league.l})!`,
+    });
+  }
+
+  async function hallOfFameCanvas(data = photoFromRun()) {
     const W = 1200, H = 900, top = 130, bot = 770;
     try { await document.fonts.load('700 48px "Pixelify Sans"'); } catch { /* falls back to monospace */ }
     const c = document.createElement('canvas');
@@ -2068,9 +2150,7 @@
     }
 
     // The squad: best performers in front, flanking the trophy.
-    const all = C.result.games.concat(C.national.games);
-    const pr = hasGoalData(C.result) ? perfRatings(all) : C.xi.map(() => 0);
-    const order = C.xi.map((id, i) => ({ id, r: pr[i] })).filter((x) => x.id).sort((a, b) => b.r - a.r);
+    const order = data.squad.filter((x) => x.id).sort((a, b) => b.r - a.r);
     const front = order.slice(0, 4), back = order.slice(4);
     const imgs = new Map(await Promise.all(order.map(async ({ id }) => [id, (await loadImg(spriteUrl(id, 'pixel'))) || (await loadImg(spriteUrl(id, 'art')))])));
     ctx.imageSmoothingEnabled = false;
@@ -2093,28 +2173,40 @@
       ctx.fillStyle = '#3a3a3a'; ctx.fillText(str, W / 2 + 4, y + 4);
       ctx.fillStyle = '#f4f4f4'; ctx.fillText(str, W / 2, y);
     };
-    text('Victory Road Champion! Congratulations!', top / 2 + 4, 50);
-    // Footer: region · date won · formation. The date comes from the saved season so it never changes on reopen.
-    const saved = HIST.find((e) => e.id === C.runId);
-    const won = new Date(saved ? saved.date : Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).replace(',', '');
-    text(`${REGION[C.home]}  ·  ${won}  ·  ${C.f}`.toUpperCase(), bot + (H - bot) / 2, 46);
+    text(data.title, top / 2 + 4, 50);
+    // Footer: where · date won · formation. The date comes from the saved season so it never changes on reopen.
+    text(data.footer, bot + (H - bot) / 2, 46);
     return c;
   }
 
-  async function showHallOfFame() {
+  let hofShown = null; // { canvas, text } of the photo on screen, for sharing
+  async function showHallOfFame(data = photoFromRun()) {
     const box = $('#hof');
     box.hidden = false;
     box.classList.remove('show');
     $('#hof-img').removeAttribute('src');
-    const c = await hallOfFameCanvas();
+    const c = await hallOfFameCanvas(data);
+    hofShown = { canvas: c, text: data.share };
     $('#hof-img').src = c.toDataURL('image/png');
     void box.offsetWidth;
     box.classList.add('show');
     confetti(260);
   }
-  $('#ch-hof').addEventListener('click', showHallOfFame);
+  $('#ch-hof').addEventListener('click', () => showHallOfFame(photoFromRun()));
   $('#hof-close').addEventListener('click', () => { $('#hof').hidden = true; });
-  $('#hof-share').addEventListener('click', shareResult);
+  $('#hof-share').addEventListener('click', async () => {
+    if (!hofShown) return;
+    const url = location.origin + location.pathname;
+    const blob = await new Promise((r) => hofShown.canvas.toBlob(r, 'image/png'));
+    const file = new File([blob], 'pokemon-starting-xi-champions.png', { type: 'image/png' });
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Pokémon Starting XI', text: `${hofShown.text} ${url}` }); return; }
+    } catch (err) { if (err && err.name === 'AbortError') return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = file.name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast('Photo saved');
+  });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#hof').hidden) $('#hof').hidden = true; });
 
   // ---------------- Daily Challenge ----------------

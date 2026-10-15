@@ -624,3 +624,25 @@ button.award:hover { background: var(--surface-2); }
   .options { overflow: visible; }
   .options .opt-head { top: var(--topbar-h, 97px); }
 }
+
+/* ---------- Records tabs, best runs, trophies ---------- */
+.rec-tabs { margin-top: 6px; overflow-x: auto; }
+.rec-body { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
+.season summary { grid-template-columns: auto 1fr auto; }
+.season .s-rank { grid-row: span 2; align-self: center; font-family: var(--display); font-weight: 800; font-size: 28px; width: 36px; color: var(--muted); }
+.season .s-main { grid-column: 2; }
+.season .s-rec { grid-column: 2; }
+.season .s-date { grid-column: 3; grid-row: 1; }
+.s-trophy { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--r-good); border: 1.5px solid currentColor; padding: 1px 5px; margin-right: 4px; vertical-align: 1px; }
+.photo-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.photo-row .btn { width: auto; flex: 1 1 160px; }
+.trophies { display: flex; flex-direction: column; }
+.trophy-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.trophy-row:last-child { border-bottom: 1px solid var(--rule); }
+.trophy-row .btn { width: auto; }
+.tr-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tr-label { font-family: var(--display); font-weight: 700; font-size: 21px; line-height: 1.05; }
+.trophy-row.vr .tr-label { color: var(--r-good); }
+.tr-sub { font-size: 12.5px; color: var(--ink-2); }
+.tabs button, .result-tabs button { white-space: nowrap; }
+.rec-tabs { gap: 16px; }

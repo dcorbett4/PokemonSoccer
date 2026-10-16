@@ -552,9 +552,14 @@
   let drag = null;
   function onPointerDown(e) {
     const el = e.target.closest('.player');
-    if (!el || e.button > 0 || S.view === 'records') return;
+    if (!el || e.button > 0) return;
+    const slot = +el.dataset.slot;
+    if (S.view === 'records') { const id = allTimeXI().xi[slot]; if (id) openCareer(id); return; }
     if (isRun()) {
-      if (el.classList.contains('placeable') && !autoDrafting) placePick(+el.dataset.slot);
+      if (el.classList.contains('placeable') && !autoDrafting) placePick(slot);
+      else if ((C.phase === 'result' || C.phase === 'national') && !seasonTimer && C.result && C.xi[slot]) {
+        openPlayer({ src: resultComp === 'national' && C.national ? 'national' : 'league', ci: 0, slot });
+      }
       return;
     }
     drag = { el, slot: +el.dataset.slot, x: e.clientX, y: e.clientY, started: false, target: null, ghost: null };
@@ -1584,7 +1589,7 @@
   // ---------------- Result panel ----------------
   let resultTab = 'squad', resultComp = 'league';
 
-  function squadBody(games, label) {
+  function squadBody(games, label, src = 'league') {
     const st = seasonPlayerStats(games);
     const pr = perfRatings(games);
     const rows = FORMATIONS[C.f].map(([pos], i) => ({ i, pos, rtg: pr[i], ...st[i] }));
@@ -1598,7 +1603,7 @@
       </div>
       <div class="table-wrap"><table class="league squad">
       <tr><th class="team">Player</th><th title="Performance rating">RTG</th><th>G</th><th>A</th><th>G+A</th><th title="Clean sheets">CS</th><th title="Man of the match">MOTM</th></tr>
-      ${rows.map((r) => `<tr><td class="team"><span class="ppos" style="color:${posColor(r.pos)}">${r.pos}</span>${esc(slotName(r.i))}</td><td><b style="color:${perfColor(r.rtg)}">${r.rtg}</b></td><td>${r.g}</td><td>${r.a}</td><td><b>${r.g + r.a}</b></td><td>${POS[r.pos].line === 'GK' || POS[r.pos].line === 'DEF' ? r.cs : '–'}</td><td>${r.motm}</td></tr>`).join('')}
+      ${rows.map((r) => `<tr class="clickable" data-player="${src}:0:${r.i}"><td class="team"><span class="ppos" style="color:${posColor(r.pos)}">${r.pos}</span>${esc(slotName(r.i))}</td><td><b style="color:${perfColor(r.rtg)}">${r.rtg}</b></td><td>${r.g}</td><td>${r.a}</td><td><b>${r.g + r.a}</b></td><td>${POS[r.pos].line === 'GK' || POS[r.pos].line === 'DEF' ? r.cs : '–'}</td><td>${r.motm}</td></tr>`).join('')}
       </table></div>`;
   }
   function matchesBody(games, labelFn, xi = C.xi, src = null, ci = 0) {
@@ -1615,8 +1620,9 @@
   function awardsBody(res) {
     if (!res.clubs) return '<p class="muted small-text">League-wide awards are tracked for seasons played from now on.</p>';
     const A = compAwards(res);
-    const card = (icon, lbl, p, v) => (p && p[v] > 0 ? `<button class="award${p.me ? ' mine' : ''}"${clubAttr(res, p.ci)}>${imgTag(p.id, 'pixel')}<div><small>${lbl}</small><b>${pkName(p.id)}</b><i>${esc(p.club)}</i></div><em>${p[v]}</em></button>` : '');
-    const row = (p, cells) => `<tr class="clickable${p.me ? ' me' : ''}"${clubAttr(res, p.ci)}>${cells}</tr>`;
+    const pAttr = (p) => ` data-player="${res.national ? 'national' : 'league'}:${p.ci}:${p.slot}"`;
+    const card = (icon, lbl, p, v) => (p && p[v] > 0 ? `<button class="award${p.me ? ' mine' : ''}"${pAttr(p)}>${imgTag(p.id, 'pixel')}<div><small>${lbl}</small><b>${pkName(p.id)}</b><i>${esc(p.club)}</i></div><em>${p[v]}</em></button>` : '');
+    const row = (p, cells) => `<tr class="clickable${p.me ? ' me' : ''}"${pAttr(p)}>${cells}</tr>`;
     return `<div class="awards">
         ${card('', 'Golden Boot', A.boot, 'g')}${card('', 'Top Assists', A.assists, 'a')}
         ${card('', res.national ? 'Player of the Tournament' : 'Player of the Season', A.pots, 'rtg')}${card('', 'Golden Glove', A.glove, 'cs')}
@@ -1739,7 +1745,7 @@
     } else if (resultTab === 'matches') {
       body = matchesBody(games, (g) => g.short, C.xi, 'national');
     } else {
-      body = squadBody(games, 'Player of the Tournament');
+      body = squadBody(games, 'Player of the Tournament', 'national');
     }
     return `
       <div class="label">Victory Road</div>
@@ -1788,7 +1794,7 @@
       <div class="group-title">Squad</div>
       <div class="club-squad">${club.xi.map((id, i) => {
         const pos = FORMATIONS[club.f][i][0], p = BY_ID.get(id);
-        return `<div class="cs-row" title="${statLine(p)}"><span class="ppos" style="color:${posColor(pos)}">${pos}</span>${imgTag(id, S.sprite, 'cs-img')}
+        return `<div class="cs-row clickable" title="${statLine(p)}" data-player="${src}:${ci}:${i}"><span class="ppos" style="color:${posColor(pos)}">${pos}</span>${imgTag(id, S.sprite, 'cs-img')}
           <span class="cs-name">${esc(p.name)}</span><span class="cs-ga">${st[i].g}G ${st[i].a}A${POS[pos].line === 'GK' || POS[pos].line === 'DEF' ? ` · ${st[i].cs}CS` : ''}</span>
           <b style="color:${perfColor(pr[i])}">${pr[i]}</b></div>`;
       }).join('')}</div>
@@ -1976,7 +1982,7 @@
       content = `<div class="seg small" id="career-seg">${[['g', 'Goals'], ['a', 'Assists'], ['avg', 'Rating'], ['seasons', 'Seasons']].map(([k, l]) => `<button data-sort="${k}" class="${k === careerSort ? 'on' : ''}">${l}</button>`).join('')}</div>
         <div class="table-wrap"><table class="league squad">
           <tr><th>#</th><th class="team">Pokémon</th><th title="Seasons">S</th><th>G</th><th>A</th><th title="Average rating">RTG</th><th title="Awards won">AWD</th></tr>
-          ${cs.slice(0, 25).map((c, i) => `<tr><td>${i + 1}</td><td class="team"><span class="ppos" style="color:${LINES[c.line].color}">${c.line}</span>${pkName(c.id)}</td><td>${c.seasons}</td><td>${c.g}</td><td>${c.a}</td><td><b style="color:${perfColor(c.avg)}">${c.avg}</b></td><td>${c.awards || ''}</td></tr>`).join('')}
+          ${cs.slice(0, 25).map((c, i) => `<tr class="clickable" data-career="${c.id}"><td>${i + 1}</td><td class="team"><span class="ppos" style="color:${LINES[c.line].color}">${c.line}</span>${pkName(c.id)}</td><td>${c.seasons}</td><td>${c.g}</td><td>${c.a}</td><td><b style="color:${perfColor(c.avg)}">${c.avg}</b></td><td>${c.awards || ''}</td></tr>`).join('')}
         </table></div>`;
     } else {
       const list = HIST.filter((e) => seasonFilter === 'all' || entryKind(e) === seasonFilter);
@@ -3308,6 +3314,135 @@
   const syncTopbarH = () => document.documentElement.style.setProperty('--topbar-h', $('.topbar').offsetHeight + 'px');
   window.addEventListener('resize', syncTopbarH);
   syncTopbarH();
+
+  // ---------------- Player sheet (FotMob-style) ----------------
+  // Per-match ratings on a 6.0–10.0 scale, built only from what the sim decided: goals, assists,
+  // clean sheets / goals conceded, the result and margin, and Man of the Match. A tiny fixed nudge per
+  // player per match keeps a back line from all reading the same number.
+  const ratingColor = (r) => (r >= 8 ? '#2D7FF9' : r >= 7 ? '#1FAF5C' : r >= 6 ? '#F08C2E' : '#E5484D');
+  function gameMotm(g) {
+    const score = {};
+    for (const e of g.goals || []) { score[e.s] = (score[e.s] || 0) + 2; if (e.a != null) score[e.a] = (score[e.a] || 0) + 1; }
+    let best = null, bv = 0;
+    for (const k in score) if (score[k] > bv) { bv = score[k]; best = +k; }
+    if (best == null && g.ga === 0) best = 0;
+    return cellRes(g) === 'L' ? null : best;
+  }
+  function matchRating(g, pos, slot, salt) {
+    const line = POS[pos].line;
+    const goals = (g.goals || []).filter((e) => e.s === slot).length;
+    const assists = (g.goals || []).filter((e) => e.a === slot).length;
+    let r = 6.0;
+    r += goals * { GK: 1.5, DEF: 1.3, MID: 1.1, FWD: 1.0 }[line];
+    r += assists * (line === 'MID' ? 0.7 : 0.6);
+    if (g.ga === 0) r += { GK: 1.0, DEF: 0.6, MID: 0.2, FWD: 0 }[line];
+    else r -= g.ga * { GK: 0.3, DEF: 0.15, MID: 0.05, FWD: 0 }[line];
+    r += { W: 0.4, D: 0.1, L: -0.3 }[cellRes(g)];
+    r += clamp((g.gf - g.ga) * 0.05, -0.2, 0.2);
+    const motm = gameMotm(g) === slot;
+    if (motm) r += 0.5;
+    r += ((hash32(salt) % 61) - 30) / 100;
+    return { r: Math.round(clamp(r, 3, 10) * 10) / 10, goals, assists, cs: g.ga === 0 && (line === 'GK' || line === 'DEF'), motm };
+  }
+
+  let PS = null; // the open sheet: { src, ci, slot, sel }
+  const resFor = (src) => (src === 'national' ? C.national : C.result);
+  function openPlayer(o) { PS = Object.assign({ sel: null }, o); renderPlayer(); $('#player-modal').hidden = false; }
+  function closePlayer() { $('#player-modal').hidden = true; PS = null; }
+
+  function renderPlayer() {
+    const res = resFor(PS.src);
+    if (!res) return closePlayer();
+    const club = res.clubs ? res.clubs[PS.ci] : { name: 'Your XI', f: C.f, xi: C.xi, me: true };
+    const f = club.f, slot = PS.slot, id = club.xi[slot], pos = FORMATIONS[f][slot][0], p = BY_ID.get(id);
+    const games = PS.ci === 0 ? res.games : teamGames(res, PS.ci);
+    const rows = games.map((g, n) => Object.assign({ g, n }, matchRating(g, pos, slot, `${PS.src}|${PS.ci}|${slot}|${g.mi != null ? g.mi : n}`)));
+    const avg = rows.length ? Math.round((rows.reduce((t, x) => t + x.r, 0) / rows.length) * 10) / 10 : 0;
+    const tot = rows.reduce((t, x) => ({ g: t.g + x.goals, a: t.a + x.assists, cs: t.cs + (x.cs ? 1 : 0), m: t.m + (x.motm ? 1 : 0) }), { g: 0, a: 0, cs: 0, m: 0 });
+    const season = perfRatings(games, f)[slot];
+    const defensive = POS[pos].line === 'GK' || POS[pos].line === 'DEF';
+    const label = (g) => (res.national ? g.short : `MD${g.md}`);
+    const comps = PS.ci === 0 && C.national && res.clubs
+      ? `<div class="seg small"><button data-pcomp="league" class="${PS.src === 'league' ? 'on' : ''}">${C.mode === 'regions' ? `${REGION[C.home]} League` : 'League'}</button><button data-pcomp="national" class="${PS.src === 'national' ? 'on' : ''}">Victory Road</button></div>` : '';
+    const sel = PS.sel != null ? rows[PS.sel] : null;
+    const tile = (k, v) => `<div class="ps-tile"><span>${k}</span><b>${v}</b></div>`;
+    const chip = (r) => `<span class="rchip" style="background:${ratingColor(r)}">${r.toFixed(1)}</span>`;
+    const contrib = (x) => [x.goals ? `${x.goals} goal${x.goals > 1 ? 's' : ''}` : '', x.assists ? `${x.assists} assist${x.assists > 1 ? 's' : ''}` : '', x.cs ? 'Clean sheet' : '', x.motm ? 'Man of the Match' : ''].filter(Boolean).join(' · ');
+    const canWatch = (g) => res.clubs && g.mi != null;
+    $('#player-body').innerHTML = `
+      <div class="ps-head">
+        <div class="ps-sprite"><img src="${spriteUrl(id, 'pixel')}" alt="" onerror="this.onerror=null;this.src='${SPR}other/official-artwork/${id}.png'"></div>
+        <div class="ps-id">
+          <span class="label">${esc(club.name)} · ${f}</span>
+          <h2>${esc(p.name)}</h2>
+          <span class="ps-sub"><span class="ppos" style="color:${posColor(pos)}">${pos}</span>${LINES[POS[pos].line].name} · ${pkMeta(p)}</span>
+        </div>
+        <div class="ps-rating" style="background:${ratingColor(avg)}" title="Average match rating"><b>${avg.toFixed(1)}</b><span>avg</span></div>
+      </div>
+      ${comps}
+      <div class="ps-tiles">
+        ${tile('Apps', rows.length)}${tile('Goals', tot.g)}${tile('Assists', tot.a)}
+        ${tile(defensive ? 'Clean sheets' : 'G + A', defensive ? tot.cs : tot.g + tot.a)}${tile('Man of the Match', tot.m)}
+        <div class="ps-tile"><span>Season rating</span><b style="color:${perfColor(season)}">${season}</b></div>
+      </div>
+      <div class="group-title">Match ratings</div>
+      <div class="ps-chart" role="list">${rows.map((x) => `<button role="listitem" class="ps-bar${PS.sel === x.n ? ' on' : ''}" data-pbar="${x.n}" title="${label(x.g)} ${x.g.home ? 'vs' : '@'} ${esc(x.g.opp)} ${scoreText(x.g)} · ${x.r.toFixed(1)}"><i style="height:${Math.round(Math.max(5, ((x.r - 3) / 7) * 80))}px;background:${ratingColor(x.r)}"></i></button>`).join('')}</div>
+      ${sel ? `<div class="ps-sel">
+        <div><span class="label">${label(sel.g)} · ${sel.g.home ? 'vs' : '@'} ${esc(sel.g.opp)}</span><b>${scoreText(sel.g)} <span class="${cellRes(sel.g)}">${cellRes(sel.g)}</span></b><span class="muted small-text">${contrib(sel) || 'No goal involvements'}</span></div>
+        ${chip(sel.r)}${canWatch(sel.g) ? watchBtn(PS.src, sel.g.mi) : ''}</div>` : '<p class="muted small-text">Tap a bar to see that match.</p>'}
+      <div class="group-title">Base stats</div>
+      ${statHead()}<div class="pk ps-stats" aria-hidden="true"><span></span><span class="pk-main"><span class="no">${pkMeta(p)}</span></span>${statBars(p)}</div>
+      <div class="group-title">Matches</div>
+      <div class="ps-list">${rows.slice().reverse().map((x) => `<button class="ps-row" data-pbar="${x.n}">
+        <span class="muted">${label(x.g)}</span><span class="ps-opp">${x.g.home ? 'vs' : '@'} ${esc(x.g.opp)}</span><span class="ps-score ${cellRes(x.g)}">${scoreText(x.g)}</span>
+        <span class="ps-c">${[x.goals ? `${x.goals}G` : '', x.assists ? `${x.assists}A` : '', x.motm ? 'MOTM' : ''].filter(Boolean).join(' ')}</span>${chip(x.r)}</button>`).join('')}</div>
+      ${res.clubs ? `<button class="btn btn-text" data-pclub="${PS.ci}">View ${esc(club.name)} club page</button>` : ''}`;
+  }
+
+  // Career sheet: everything this Pokémon has done for you across saved seasons.
+  function openCareer(id) {
+    PS = null;
+    const p = BY_ID.get(id), c = careers().find((x) => x.id === id);
+    const seasons = HIST.filter((e) => e.squad.some((x) => x.id === id));
+    if (!c || !seasons.length) { toast('No saved seasons for this Pokémon yet'); return; }
+    const titles = seasons.filter((e) => e.league.pos === 1).length, vr = seasons.filter((e) => e.nat && e.nat.finish === 'Champion').length;
+    const tile = (k, v) => `<div class="ps-tile"><span>${k}</span><b>${v}</b></div>`;
+    $('#player-body').innerHTML = `
+      <div class="ps-head">
+        <div class="ps-sprite"><img src="${spriteUrl(id, 'pixel')}" alt="" onerror="this.onerror=null;this.src='${SPR}other/official-artwork/${id}.png'"></div>
+        <div class="ps-id"><span class="label">Career with you</span><h2>${esc(p.name)}</h2><span class="ps-sub"><span class="ppos" style="color:${LINES[c.line].color}">${c.line}</span>${pkMeta(p)}</span></div>
+        <div class="ps-rating" style="background:${perfColor(c.avg)}" title="Average season rating"><b>${c.avg}</b><span>avg</span></div>
+      </div>
+      <div class="ps-tiles">${tile('Seasons', c.seasons)}${tile('Goals', c.g)}${tile('Assists', c.a)}${tile('Clean sheets', c.cs)}${tile('League titles', titles)}${tile('Victory Road', vr)}</div>
+      <div class="group-title">Base stats</div>
+      ${statHead()}<div class="pk ps-stats" aria-hidden="true"><span></span><span class="pk-main"><span class="no">${pkMeta(p)}</span></span>${statBars(p)}</div>
+      <div class="group-title">Seasons</div>
+      <div class="table-wrap"><table class="league squad">
+        <tr><th class="team">Season</th><th>POS</th><th>G</th><th>A</th><th>RTG</th></tr>
+        ${seasons.map((e) => { const x = e.squad.find((q) => q.id === id); return `<tr><td class="team">${e.league.pos === 1 ? '<span class="s-trophy">Champions</span> ' : ''}${modeLabel(e)} <span class="muted">· ${dateLabel(e.date)}</span></td><td>${x.pos}</td><td>${x.g}</td><td>${x.a}</td><td><b style="color:${perfColor(x.rtg)}">${x.rtg}</b></td></tr>`; }).join('')}
+      </table></div>`;
+    $('#player-modal').hidden = false;
+  }
+
+  $('#player-close').addEventListener('click', closePlayer);
+  $('#player-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'player-modal') { closePlayer(); return; }
+    if (!PS) return;
+    const bar = e.target.closest('[data-pbar]'), comp = e.target.closest('[data-pcomp]'), club = e.target.closest('[data-pclub]');
+    if (bar) { PS.sel = +bar.dataset.pbar; renderPlayer(); }
+    else if (comp) { PS.src = comp.dataset.pcomp; PS.sel = null; renderPlayer(); }
+    else if (club) { const src = PS.src, ci = +club.dataset.pclub; closePlayer(); openClub(src, ci); }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#player-modal').hidden) closePlayer(); });
+  // Rows anywhere (squad tables, awards, club pages, careers) open the sheet.
+  document.addEventListener('click', (e) => {
+    const pl = e.target.closest('[data-player]'), ca = e.target.closest('[data-career]');
+    if (!pl && !ca) return;
+    e.stopPropagation();
+    if (ca) { openCareer(+ca.dataset.career); return; }
+    const [src, ci, slot] = pl.dataset.player.split(':');
+    openPlayer({ src, ci: +ci, slot: +slot });
+  }, true);
 
   // ---------------- Light / dark theme ----------------
   // No saved choice = follow the system setting. The toggle flips to the opposite of what's showing.

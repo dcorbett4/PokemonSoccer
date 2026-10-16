@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Pixelify+Sans:wght@700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=67a23d5e33" />
+  <link rel="stylesheet" href="styles.css?v=d31852f855" />
 </head>
 <body>
   <header class="topbar">
@@ -307,6 +307,7 @@
             <li>Afterwards, check the <b>Squad</b>, <b>Team</b>, <b>Table</b>, <b>Awards</b> and <b>Games</b> tabs. Tap any club to see its squad and results.</li>
             <li><b>Watch live:</b> tap ▶ next to any game to watch it play out on the pitch with commentary, or turn on <b>Watch next match</b> during the season. Victory Road knockout games are offered live automatically.</li>
             <li>Each of your players gets a <b>performance rating</b> for the season, based on what they actually did.</li>
+            <li><b>Tap any player</b> (on the pitch, in squad tables, awards or club pages) for their stat sheet: a 6.0–10.0 rating for every match, season totals, base stats and their full match list.</li>
           </ul>
           <p class="muted">A perfect 38–0 is extremely rare. Even an elite squad pulls it off only about 1 run in 70.</p>
           <h3>Daily Challenge</h3>
@@ -458,9 +459,17 @@
     </div>
   </div>
 
+  <!-- Player sheet -->
+  <div class="modal" id="player-modal" hidden>
+    <div class="modal-card player-card">
+      <div class="modal-head"><span></span><button class="icon-btn" id="player-close" aria-label="Close">✕</button></div>
+      <div class="player-body" id="player-body"></div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" hidden></div>
 
   <script src="data.js?v=a386ee55ba"></script>
-  <script src="app.js?v=5c16e51cf8"></script>
+  <script src="app.js?v=9a0ec42fe6"></script>
 </body>
 </html>

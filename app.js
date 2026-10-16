@@ -3455,14 +3455,63 @@
       ${res.clubs ? `<button class="btn btn-text" data-pclub="${PS.ci}">View ${esc(club.name)} club page</button>` : ''}`;
   }
 
-  // Career sheet: everything this Pokémon has done for you across saved seasons.
-  function openCareer(id) {
-    PS = null;
+  // How a saved season's 40–99 rating was earned — the same sums as perfRatings, from the stored totals.
+  function seasonRatingParts(e, x) {
+    const N = e.nat || { w: 0, d: 0, l: 0, ga: 0 }, L = e.league;
+    const n = Math.max(1, L.w + L.d + L.l + N.w + N.d + N.l);
+    const pts = 3 * (L.w + N.w) + L.d + N.d, gaPg = (L.ga + N.ga) / n;
+    const line = POS[x.pos].line, parts = [];
+    const add = (label, v) => { if (Math.abs(v) >= 0.05) parts.push({ label, v }); };
+    const per = (k) => (x[k] / n).toFixed(2);
+    if (line === 'FWD') { add(`Goals (${per('g')} a game)`, 45 * x.g / n); add(`Assists (${per('a')} a game)`, 25 * x.a / n); }
+    else if (line === 'MID') { add(`Goals (${per('g')} a game)`, 55 * x.g / n); add(`Assists (${per('a')} a game)`, 45 * x.a / n); }
+    else if (line === 'DEF') { add(`Clean sheets (${x.cs} of ${n})`, 30 * x.cs / n); add(`Goals (${per('g')} a game)`, 45 * x.g / n); add(`Assists (${per('a')} a game)`, 30 * x.a / n); }
+    else { add(`Clean sheets (${x.cs} of ${n})`, 40 * x.cs / n); add(`Goals conceded (${gaPg.toFixed(2)} a game)`, -6 * gaPg); }
+    add(`Man of the Match (${x.motm} of ${n})`, 30 * x.motm / n);
+    add(`Team results (${(pts / n).toFixed(2)} pts a game)`, (pts / n - 1.4) * 10);
+    const base = line === 'MID' ? 52 : 50, raw = base + parts.reduce((t, q) => t + q.v, 0);
+    return { n, base, parts, raw, r: clamp(Math.round(raw), 40, 99) };
+  }
+
+  // Career sheet: everything this Pokémon has done for you across saved seasons. PS = { career, csel }.
+  function openCareer(id, csel = null) {
     const p = BY_ID.get(id), c = careers().find((x) => x.id === id);
-    const seasons = HIST.filter((e) => e.squad.some((x) => x.id === id));
+    const seasons = HIST.filter((e) => e.squad.some((x) => x.id === id)).reverse(); // oldest first, like a match list
     if (!c || !seasons.length) { toast('No saved seasons for this Pokémon yet'); return; }
+    PS = { career: id, csel };
     const titles = seasons.filter((e) => e.league.pos === 1).length, vr = seasons.filter((e) => e.nat && e.nat.finish === 'Champion').length;
     const tile = (k, v) => `<div class="ps-tile"><span>${k}</span><b>${v}</b></div>`;
+    const chip = (r) => `<span class="rchip" style="background:${perfColor(r)};color:var(--bg)">${r}</span>`;
+    const me = (e) => e.squad.find((q) => q.id === id);
+    const ord = (n) => n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] || 'th');
+    const awardNames = { boot: 'Golden Boot', assists: 'Top assists', glove: 'Golden Glove', pots: 'Player of the Season' };
+    const seasonPanel = (e) => {
+      const x = me(e), slot = e.squad.indexOf(x), line = POS[x.pos].line, R = seasonRatingParts(e, x), L = e.league;
+      const st = (k, v) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`;
+      const won = [];
+      for (const [set, tag] of [[e.awards, ''], [e.natAwards, ' (VR)']]) if (set) for (const k in set) if (set[k] && set[k].me && set[k].id === id) won.push(awardNames[k] + tag);
+      return `<div class="ps-sel">
+        <div class="ps-sel-head">
+          <div><span class="label">${modeLabel(e)} · ${dateLabel(e.date)} · ${e.f}</span>
+          <b>${L.pos === 1 ? '<span class="W">Champions</span>' : `${ord(L.pos)} place`} <span class="muted">· ${L.w}–${L.d}–${L.l} · ${L.pts} pts${e.nat ? ` · VR ${e.nat.finish}` : ''}</span></b></div>
+          ${chip(x.rtg)}
+        </div>
+        <div class="kv-grid">
+          ${st('Position', x.pos)}${st('Apps', R.n)}${st('Goals', x.g)}${st('Assists', x.a)}
+          ${line === 'GK' || line === 'DEF' ? st('Clean sheets', x.cs) : st('G + A', x.g + x.a)}${st('Man of the Match', x.motm)}
+          ${won.length ? st('Awards', won.join(', ')) : ''}
+        </div>
+        <div class="group-title">Rating breakdown</div>
+        <div class="ps-break">
+          <div><span>Starting rating</span><b>${R.base}</b></div>
+          ${R.parts.map((q) => `<div><span>${esc(q.label)}</span><b class="${q.v > 0 ? 'up' : 'down'}">${q.v > 0 ? '+' : '−'}${Math.abs(q.v).toFixed(1)}</b></div>`).join('')}
+          ${R.raw > 99.5 || R.raw < 39.5 ? `<div><span>${R.raw > 99 ? 'Capped at 99' : 'Floor of 40'}</span><b>${R.raw.toFixed(1)} → ${R.r}</b></div>` : ''}
+          <div class="tot"><span>Season rating</span><b>${x.rtg}</b></div>
+        </div>
+        ${e.games ? `<button class="btn wide" data-pseason="${e.id}:${slot}">Match by match →</button>` : '<p class="muted small-text">Match-by-match ratings are only kept for seasons played from now on.</p>'}
+      </div>`;
+    };
+    const sel = csel != null ? seasons[csel] : null;
     $('#player-body').innerHTML = `
       <div class="ps-head">
         <div class="ps-sprite"><img src="${spriteUrl(id, 'pixel')}" alt="" onerror="this.onerror=null;this.src='${SPR}other/official-artwork/${id}.png'"></div>
@@ -3470,17 +3519,16 @@
         <div class="ps-rating" style="background:${perfColor(c.avg)}" title="Average season rating"><b>${c.avg}</b><span>avg</span></div>
       </div>
       <div class="ps-tiles">${tile('Seasons', c.seasons)}${tile('Goals', c.g)}${tile('Assists', c.a)}${tile('Clean sheets', c.cs)}${tile('League titles', titles)}${tile('Victory Road', vr)}</div>
+      <div class="group-title">Season ratings</div>
+      <div class="ps-chart ps-chart-career" role="list">${seasons.map((e, i) => { const r = me(e).rtg; return `<button role="listitem" class="ps-bar${csel === i ? ' on' : ''}" data-cseason="${i}" title="${modeLabel(e)} · ${dateLabel(e.date)} · ${r}"><i style="height:${Math.round(Math.max(5, ((r - 40) / 59) * 80))}px;background:${perfColor(r)}"></i></button>`; }).join('')}</div>
+      ${sel ? seasonPanel(sel) : '<p class="muted small-text">Tap a bar (or a season below) for its full breakdown.</p>'}
       <div class="group-title">Base stats</div>
       ${statHead()}<div class="pk ps-stats" aria-hidden="true"><span></span><span class="pk-main"><span class="no">${pkMeta(p)}</span></span>${statBars(p)}</div>
       <div class="group-title">Seasons</div>
-      <div class="table-wrap"><table class="league squad">
-        <tr><th class="team">Season</th><th>POS</th><th>G</th><th>A</th><th>RTG</th></tr>
-        ${seasons.map((e) => { const x = e.squad.find((q) => q.id === id); return `<tr${e.games ? ` class="clickable" data-pseason="${e.id}:${e.squad.indexOf(x)}"` : ''}><td class="team">${e.league.pos === 1 ? '<span class="s-trophy">Champions</span> ' : ''}${modeLabel(e)} <span class="muted">· ${dateLabel(e.date)}</span></td><td>${x.pos}</td><td>${x.g}</td><td>${x.a}</td><td><b style="color:${perfColor(x.rtg)}">${x.rtg}</b></td></tr>`; }).join('')}
-      </table></div>
-      ${seasons.some((e) => e.games) ? '<p class="muted small-text">Tap a season for its match-by-match ratings.</p>' : ''}
-      ${seasons.some((e) => !e.games) ? '<p class="muted small-text">Seasons saved before match logs were kept can’t be opened.</p>' : ''}`;
+      <div class="ps-list">${seasons.map((e, i) => [e, i]).reverse().map(([e, i]) => { const x = me(e); return `<button class="ps-row" data-cseason="${i}">
+        <span class="muted">${x.pos}</span><span class="ps-opp">${e.league.pos === 1 ? '<span class="s-trophy">Champions</span> ' : ''}${modeLabel(e)} <span class="muted">· ${dateLabel(e.date)}</span></span><span class="ps-score">${ord(e.league.pos)}</span>
+        <span class="ps-c">${[x.g ? `${x.g}G` : '', x.a ? `${x.a}A` : '', POS[x.pos].line === 'GK' || POS[x.pos].line === 'DEF' ? `${x.cs}CS` : ''].filter(Boolean).join(' ')}</span>${chip(x.rtg)}</button>`; }).join('')}</div>`;
     $('#player-modal').hidden = false;
-    PS = { career: id };
   }
 
   $('#player-close').addEventListener('click', closePlayer);
@@ -3489,12 +3537,17 @@
     if (!PS) return;
     const bar = e.target.closest('[data-pbar]'), comp = e.target.closest('[data-pcomp]'), club = e.target.closest('[data-pclub]');
     const season = e.target.closest('[data-pseason]'), back = e.target.closest('[data-pcareer]');
-    if (season) {
+    const cseason = e.target.closest('[data-cseason]');
+    if (cseason) {
+      openCareer(PS.career, +cseason.dataset.cseason);
+      if (cseason.classList.contains('ps-row')) $('#player-body').scrollTop = 0;
+    }
+    else if (season) {
       const [hist, slot] = season.dataset.pseason.split(':').map(Number);
-      PS = { hist, slot, ci: 0, src: 'league', sel: null, career: PS.career };
+      PS = { hist, slot, ci: 0, src: 'league', sel: null, career: PS.career, csel: PS.csel };
       renderPlayer(); $('#player-body').scrollTop = 0;
     }
-    else if (back) { openCareer(+back.dataset.pcareer); $('#player-body').scrollTop = 0; }
+    else if (back) { openCareer(PS.career, PS.csel); $('#player-body').scrollTop = 0; }
     else if (bar) {
       PS.sel = +bar.dataset.pbar;
       renderPlayer();

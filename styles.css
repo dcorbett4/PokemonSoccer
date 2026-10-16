@@ -715,3 +715,5 @@ button.award:hover { background: var(--surface-2); }
 .ps-break .tot { border-top: 1.5px solid var(--ink); font-weight: 600; margin-top: 2px; padding-top: 6px; }
 .ps-break .tot b { font-size: 15px; }
 .ps-back { align-self: flex-start; padding: 0; margin-bottom: -4px; }
+.ps-chart-career { justify-content: flex-start; }
+.ps-chart-career .ps-bar { flex: 0 1 44px; }

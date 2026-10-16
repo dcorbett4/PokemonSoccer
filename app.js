@@ -2589,11 +2589,9 @@
     };
     LV.colors = [col(0), col(1)];
     $$('#live .lb-dot').forEach((d, i) => { d.style.background = LV.colors[i]; });
-    // Timeline: goal markers along the match length, plus a goals summary in the side column.
-    const endMin = S0.end, mk = (team) => (team === 0 ? S0.m.eh : S0.m.ea) || [];
-    $('#live-marks').innerHTML = [0, 1].map((team) => mk(team).map((e) => `<i title="${esc(BY_ID.get(S0.clubs[team].xi[e.s]).name)} ${e.m}'" style="left:${(Math.min(e.m, endMin) / endMin) * 100}%;background:${team === 0 ? 'var(--ink)' : 'var(--accent)'}"></i>`).join('')).join('');
-    $('#live-ticks').innerHTML = S0.m.et ? "<span>0'</span><span>60'</span><span>120'</span>" : "<span>0'</span><span>45'</span><span>90'</span>";
-    $('#live-fill').style.width = '0%';
+    // A match you haven't seen the result of yet (watched from season playback) is spoiler-free:
+    // goal markers appear only as goals happen, and the scale only stretches to 120' at extra time.
+    LV.spoilerFree = !!opts.fromPlayback;
     $('#live-goals').innerHTML = '';
     $('#live-play').classList.remove('paused');
     $('#live-feed').innerHTML = '';
@@ -2650,8 +2648,20 @@
     $('#live-feed').innerHTML = '';
     LV.goals = [[], []];
     renderLiveGoals();
+    LV.marks = LV.spoilerFree ? [] : allGoalMarks();
+    LV.scaleEnd = LV.spoilerFree ? 90 : S0.end;
+    renderTimeline();
     if ($('#live-fill')) $('#live-fill').style.width = '0%';
     kickoffShape(0);
+  }
+  function allGoalMarks() {
+    const S0 = LV.S;
+    return [0, 1].flatMap((team) => ((team === 0 ? S0.m.eh : S0.m.ea) || []).map((e) => ({ m: e.m, team, name: BY_ID.get(S0.clubs[team].xi[e.s]).name })));
+  }
+  function renderTimeline() {
+    const end = LV.scaleEnd;
+    $('#live-ticks').innerHTML = end > 90 ? "<span>0'</span><span>60'</span><span>120'</span>" : "<span>0'</span><span>45'</span><span>90'</span>";
+    $('#live-marks').innerHTML = LV.marks.map((g) => `<i title="${esc(g.name)} ${g.m}'" style="left:${(Math.min(g.m, end) / end) * 100}%;background:${g.team === 0 ? 'var(--ink)' : 'var(--accent)'}"></i>`).join('');
   }
 
   function kickoffShape(team) {
@@ -2771,6 +2781,7 @@
       $('#live-score').textContent = `${st.score[0]} – ${st.score[1]}`;
       (LV.goals = LV.goals || [[], []])[team].push(`${nameOf(team, ev.s)} ${ev.min}'`);
       renderLiveGoals();
+      if (LV.spoilerFree) { LV.marks.push({ m: ev.min, team, name: nameOf(team, ev.s) }); renderTimeline(); }
       feed(`<b>${ev.min}'</b>GOAL! ${who} scores for ${club}${ev.a != null ? ` <span class="muted">(assist ${esc(nameOf(team, ev.a))})</span>` : ''} · ${st.score[0]}–${st.score[1]}`, 'goal');
       startHold('goal', HOLD.goal, { text: 'GOAL!', sub: nameOf(team, ev.s), team });
       st.celebrate = { team, slot: ev.s };
@@ -2827,7 +2838,7 @@
       }
     }
     if (!st.done) $('#live-clock').textContent = st.t >= S0.end ? (S0.m.pens ? 'Pens' : S0.m.et ? 'AET' : 'FT') : minLabel(st.t);
-    $('#live-fill').style.width = `${Math.min(100, (st.t / S0.end) * 100)}%`;
+    $('#live-fill').style.width = `${Math.min(100, (st.t / LV.scaleEnd) * 100)}%`;
   }
 
   function beginAction(a) {
@@ -2854,6 +2865,7 @@
     }
     if (S0.m.et && !st.etDone && st.t >= 90 && st.hold <= 0) {
       st.etDone = true;
+      if (LV.scaleEnd < S0.end) { LV.scaleEnd = S0.end; renderTimeline(); } // only now reveal the 120' scale
       feed(`<b>90'</b> Level at ${st.score[0]}–${st.score[1]}. Extra time!`, 'break');
       startHold('et', HOLD.et, { text: 'EXTRA TIME', sub: `${st.score[0]} – ${st.score[1]}` });
       st.afterHold = () => kickoffShape(0);
@@ -2886,6 +2898,8 @@
   function endMatch() {
     const st = LV.st, S0 = LV.S;
     st.done = true; st.playing = false;
+    LV.marks = allGoalMarks(); LV.scaleEnd = S0.end; renderTimeline();
+    $('#live-fill').style.width = '100%';
     const m = S0.m;
     const fin = m.pens ? `Penalties ${m.pens[0]}–${m.pens[1]}` : m.et ? 'After extra time' : 'Full-time';
     feed(`<b>FT</b> ${fin} · ${esc(S0.clubs[0].name)} ${m.gh}–${m.ga} ${esc(S0.clubs[1].name)}`, 'break');

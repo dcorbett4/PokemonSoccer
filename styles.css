@@ -714,3 +714,4 @@ button.award:hover { background: var(--surface-2); }
 .ps-break b.down { color: var(--loss); }
 .ps-break .tot { border-top: 1.5px solid var(--ink); font-weight: 600; margin-top: 2px; padding-top: 6px; }
 .ps-break .tot b { font-size: 15px; }
+.ps-back { align-self: flex-start; padding: 0; margin-bottom: -4px; }

@@ -1833,12 +1833,17 @@
       awards: awd(res), natAwards: N ? awd(N) : null,
       daily: C.daily || null,
       vs: C.vs ? { n: C.vs.a.n, res: compareRes(runSummary(), C.vs.a.r) } : null,
+      games: { league: packGames(res.games), nat: N ? packGames(N.games) : null },
     };
     HIST = HIST.filter((e) => e.id !== entry.id);
     HIST.unshift(entry);
     if (HIST.length > 300) HIST.length = 300;
     saveHist();
   }
+
+  // Your matches, kept small enough for localStorage: goals as [scorer, assister, minute].
+  const packGames = (gs) => gs.map((g) => ({ md: g.md, mi: g.mi, short: g.short, home: g.home, opp: g.opp, gf: g.gf, ga: g.ga, res: g.res, et: g.et || undefined, pens: g.pens || undefined, adv: g.adv, goals: g.goals.map((e) => [e.s, e.a, e.m]) }));
+  const unpackGames = (gs) => gs.map((g) => Object.assign({}, g, { goals: g.goals.map(([s, a, m]) => ({ s, a, m })) }));
 
   const modeLabel = (e) => (e.mode === 'regions' ? `${REGION[e.home]} League` : e.daily ? `Daily #${e.daily}` : '38–0 Challenge');
   const dateLabel = (t) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -3350,25 +3355,45 @@
     return { r: Math.round(clamp(raw, 3, 10) * 10) / 10, goals, assists, scored, assisted, parts, cs: g.ga === 0 && (line === 'GK' || line === 'DEF'), motm };
   }
 
-  let PS = null; // the open sheet: { src, ci, slot, sel }
+  let PS = null; // the open sheet: { src, ci, slot, sel } — plus { hist, career } for a saved season
   const resFor = (src) => (src === 'national' ? C.national : C.result);
+  // What the sheet shows: the current run's result, or a season saved in history.
+  function sheetSource() {
+    if (PS.hist != null) {
+      const e = HIST.find((x) => x.id === PS.hist);
+      if (!e || !e.games) return null;
+      const raw = PS.src === 'national' ? e.games.nat : e.games.league;
+      if (!raw) return null;
+      return {
+        national: PS.src === 'national', clubs: null, games: unpackGames(raw), hasNat: !!e.games.nat,
+        club: { name: `${modeLabel(e)} · ${dateLabel(e.date)}`, f: e.f, xi: e.squad.map((x) => x.id) },
+        leagueName: e.mode === 'regions' ? `${REGION[e.home]} League` : 'League',
+      };
+    }
+    const res = resFor(PS.src);
+    if (!res) return null;
+    return {
+      national: !!res.national, clubs: res.clubs, games: PS.ci === 0 ? res.games : teamGames(res, PS.ci), hasNat: PS.ci === 0 && !!C.national && !!res.clubs,
+      club: res.clubs ? res.clubs[PS.ci] : { name: 'Your XI', f: C.f, xi: C.xi, me: true },
+      leagueName: C.mode === 'regions' ? `${REGION[C.home]} League` : 'League',
+    };
+  }
   function openPlayer(o) { PS = Object.assign({ sel: null }, o); renderPlayer(); $('#player-modal').hidden = false; }
   function closePlayer() { $('#player-modal').hidden = true; PS = null; }
 
   function renderPlayer() {
-    const res = resFor(PS.src);
+    const res = sheetSource();
     if (!res) return closePlayer();
-    const club = res.clubs ? res.clubs[PS.ci] : { name: 'Your XI', f: C.f, xi: C.xi, me: true };
+    const club = res.club, games = res.games;
     const f = club.f, slot = PS.slot, id = club.xi[slot], pos = FORMATIONS[f][slot][0], p = BY_ID.get(id);
-    const games = PS.ci === 0 ? res.games : teamGames(res, PS.ci);
     const rows = games.map((g, n) => Object.assign({ g, n }, matchRating(g, pos, slot, `${PS.src}|${PS.ci}|${slot}|${g.mi != null ? g.mi : n}`)));
     const avg = rows.length ? Math.round((rows.reduce((t, x) => t + x.r, 0) / rows.length) * 10) / 10 : 0;
     const tot = rows.reduce((t, x) => ({ g: t.g + x.goals, a: t.a + x.assists, cs: t.cs + (x.cs ? 1 : 0), m: t.m + (x.motm ? 1 : 0) }), { g: 0, a: 0, cs: 0, m: 0 });
     const season = perfRatings(games, f)[slot];
     const defensive = POS[pos].line === 'GK' || POS[pos].line === 'DEF';
     const label = (g) => (res.national ? g.short : `MD${g.md}`);
-    const comps = PS.ci === 0 && C.national && res.clubs
-      ? `<div class="seg small"><button data-pcomp="league" class="${PS.src === 'league' ? 'on' : ''}">${C.mode === 'regions' ? `${REGION[C.home]} League` : 'League'}</button><button data-pcomp="national" class="${PS.src === 'national' ? 'on' : ''}">Victory Road</button></div>` : '';
+    const comps = res.hasNat
+      ? `<div class="seg small"><button data-pcomp="league" class="${PS.src === 'league' ? 'on' : ''}">${res.leagueName}</button><button data-pcomp="national" class="${PS.src === 'national' ? 'on' : ''}">Victory Road</button></div>` : '';
     const sel = PS.sel != null ? rows[PS.sel] : null;
     const tile = (k, v) => `<div class="ps-tile"><span>${k}</span><b>${v}</b></div>`;
     const chip = (r) => `<span class="rchip" style="background:${ratingColor(r)}">${r.toFixed(1)}</span>`;
@@ -3402,6 +3427,7 @@
       </div>`;
     };
     $('#player-body').innerHTML = `
+      ${PS.career != null ? `<button class="btn btn-text ps-back" data-pcareer="${PS.career}">← Career</button>` : ''}
       <div class="ps-head">
         <div class="ps-sprite"><img src="${spriteUrl(id, 'pixel')}" alt="" onerror="this.onerror=null;this.src='${SPR}other/official-artwork/${id}.png'"></div>
         <div class="ps-id">
@@ -3449,9 +3475,12 @@
       <div class="group-title">Seasons</div>
       <div class="table-wrap"><table class="league squad">
         <tr><th class="team">Season</th><th>POS</th><th>G</th><th>A</th><th>RTG</th></tr>
-        ${seasons.map((e) => { const x = e.squad.find((q) => q.id === id); return `<tr><td class="team">${e.league.pos === 1 ? '<span class="s-trophy">Champions</span> ' : ''}${modeLabel(e)} <span class="muted">· ${dateLabel(e.date)}</span></td><td>${x.pos}</td><td>${x.g}</td><td>${x.a}</td><td><b style="color:${perfColor(x.rtg)}">${x.rtg}</b></td></tr>`; }).join('')}
-      </table></div>`;
+        ${seasons.map((e) => { const x = e.squad.find((q) => q.id === id); return `<tr${e.games ? ` class="clickable" data-pseason="${e.id}:${e.squad.indexOf(x)}"` : ''}><td class="team">${e.league.pos === 1 ? '<span class="s-trophy">Champions</span> ' : ''}${modeLabel(e)} <span class="muted">· ${dateLabel(e.date)}</span></td><td>${x.pos}</td><td>${x.g}</td><td>${x.a}</td><td><b style="color:${perfColor(x.rtg)}">${x.rtg}</b></td></tr>`; }).join('')}
+      </table></div>
+      ${seasons.some((e) => e.games) ? '<p class="muted small-text">Tap a season for its match-by-match ratings.</p>' : ''}
+      ${seasons.some((e) => !e.games) ? '<p class="muted small-text">Seasons saved before match logs were kept can’t be opened.</p>' : ''}`;
     $('#player-modal').hidden = false;
+    PS = { career: id };
   }
 
   $('#player-close').addEventListener('click', closePlayer);
@@ -3459,7 +3488,14 @@
     if (e.target.id === 'player-modal') { closePlayer(); return; }
     if (!PS) return;
     const bar = e.target.closest('[data-pbar]'), comp = e.target.closest('[data-pcomp]'), club = e.target.closest('[data-pclub]');
-    if (bar) {
+    const season = e.target.closest('[data-pseason]'), back = e.target.closest('[data-pcareer]');
+    if (season) {
+      const [hist, slot] = season.dataset.pseason.split(':').map(Number);
+      PS = { hist, slot, ci: 0, src: 'league', sel: null, career: PS.career };
+      renderPlayer(); $('#player-body').scrollTop = 0;
+    }
+    else if (back) { openCareer(+back.dataset.pcareer); $('#player-body').scrollTop = 0; }
+    else if (bar) {
       PS.sel = +bar.dataset.pbar;
       renderPlayer();
       // Picked from the match list further down: bring the selected match (under the chart) into view.

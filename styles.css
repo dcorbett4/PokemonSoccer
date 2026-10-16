@@ -677,9 +677,6 @@ button.award:hover { background: var(--surface-2); }
 .ps-bar i { display: block; width: 100%; border-radius: 2px 2px 0 0; opacity: 0.85; }
 .ps-bar:hover i, .ps-bar.on i { opacity: 1; }
 .ps-bar.on { box-shadow: inset 0 -3px 0 var(--ink); }
-.ps-sel { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 8px 10px; background: var(--surface-2); border-radius: 6px; }
-.ps-sel > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.ps-sel b { font-family: var(--mono); font-size: 14px; }
 .rchip { display: inline-block; min-width: 38px; text-align: center; color: #fff; font-family: var(--mono); font-weight: 600; font-size: 12.5px; padding: 3px 6px; border-radius: 4px; }
 .ps-stats { border-top: 0; cursor: default; }
 .ps-stats:hover { background: transparent !important; }
@@ -702,3 +699,18 @@ button.award:hover { background: var(--surface-2); }
 .player-body > * { flex-shrink: 0; }
 .ps-list { max-height: none; overflow: visible; }
 .player-body .opt-head { position: static; }
+
+/* Per-match breakdown on the player sheet */
+.ps-sel { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; background: var(--surface-2); border-radius: 6px; }
+.ps-sel-head { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; }
+.ps-sel-head > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ps-sel-head b { font-family: var(--mono); font-size: 15px; }
+.ps-sel .kv { border-top-color: var(--rule); }
+.ps-sel .kv b small { display: inline; font-size: 11px; }
+.ps-break { display: flex; flex-direction: column; }
+.ps-break > div { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; border-top: 1px dashed var(--rule); }
+.ps-break b { font-family: var(--mono); font-weight: 600; }
+.ps-break b.up { color: var(--win); }
+.ps-break b.down { color: var(--loss); }
+.ps-break .tot { border-top: 1.5px solid var(--ink); font-weight: 600; margin-top: 2px; padding-top: 6px; }
+.ps-break .tot b { font-size: 15px; }

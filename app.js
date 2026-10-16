@@ -3328,21 +3328,26 @@
     if (best == null && g.ga === 0) best = 0;
     return cellRes(g) === 'L' ? null : best;
   }
+  // Returns the rating plus every part that went into it (shown line by line on the player sheet).
   function matchRating(g, pos, slot, salt) {
     const line = POS[pos].line;
-    const goals = (g.goals || []).filter((e) => e.s === slot).length;
-    const assists = (g.goals || []).filter((e) => e.a === slot).length;
-    let r = 6.0;
-    r += goals * { GK: 1.5, DEF: 1.3, MID: 1.1, FWD: 1.0 }[line];
-    r += assists * (line === 'MID' ? 0.7 : 0.6);
-    if (g.ga === 0) r += { GK: 1.0, DEF: 0.6, MID: 0.2, FWD: 0 }[line];
-    else r -= g.ga * { GK: 0.3, DEF: 0.15, MID: 0.05, FWD: 0 }[line];
-    r += { W: 0.4, D: 0.1, L: -0.3 }[cellRes(g)];
-    r += clamp((g.gf - g.ga) * 0.05, -0.2, 0.2);
+    const scored = (g.goals || []).filter((e) => e.s === slot), assisted = (g.goals || []).filter((e) => e.a === slot);
+    const goals = scored.length, assists = assisted.length;
+    const parts = [];
+    const add = (label, v) => { if (Math.abs(v) >= 0.005) parts.push({ label, v }); };
+    const gv = { GK: 1.5, DEF: 1.3, MID: 1.1, FWD: 1.0 }[line], av = line === 'MID' ? 0.7 : 0.6;
+    scored.forEach((e) => add(`Goal (${e.m}')`, gv));
+    assisted.forEach((e) => add(`Assist (${e.m}')`, av));
+    if (g.ga === 0) add('Clean sheet', { GK: 1.0, DEF: 0.6, MID: 0.2, FWD: 0 }[line]);
+    else add(`${g.ga} conceded`, -g.ga * { GK: 0.3, DEF: 0.15, MID: 0.05, FWD: 0 }[line]);
+    const res = cellRes(g);
+    add({ W: 'Win', D: 'Draw', L: 'Loss' }[res], { W: 0.4, D: 0.1, L: -0.3 }[res]);
+    add('Goal difference', clamp((g.gf - g.ga) * 0.05, -0.2, 0.2));
     const motm = gameMotm(g) === slot;
-    if (motm) r += 0.5;
-    r += ((hash32(salt) % 61) - 30) / 100;
-    return { r: Math.round(clamp(r, 3, 10) * 10) / 10, goals, assists, cs: g.ga === 0 && (line === 'GK' || line === 'DEF'), motm };
+    if (motm) add('Man of the Match', 0.5);
+    add('Form', ((hash32(salt) % 61) - 30) / 100);
+    const raw = 6 + parts.reduce((t, x) => t + x.v, 0);
+    return { r: Math.round(clamp(raw, 3, 10) * 10) / 10, goals, assists, scored, assisted, parts, cs: g.ga === 0 && (line === 'GK' || line === 'DEF'), motm };
   }
 
   let PS = null; // the open sheet: { src, ci, slot, sel }
@@ -3369,6 +3374,33 @@
     const chip = (r) => `<span class="rchip" style="background:${ratingColor(r)}">${r.toFixed(1)}</span>`;
     const contrib = (x) => [x.goals ? `${x.goals} goal${x.goals > 1 ? 's' : ''}` : '', x.assists ? `${x.assists} assist${x.assists > 1 ? 's' : ''}` : '', x.cs ? 'Clean sheet' : '', x.motm ? 'Man of the Match' : ''].filter(Boolean).join(' · ');
     const canWatch = (g) => res.clubs && g.mi != null;
+    const nm = (s2) => (club.xi[s2] ? esc(BY_ID.get(club.xi[s2]).name) : '?');
+    const sgnf = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2).replace(/0$/, '')}`;
+    // One match: score + contributions, the player's match stats, and the rating built line by line.
+    const matchBreakdown = (x) => {
+      const g = x.g, line = POS[pos].line;
+      const st = (k, v) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`;
+      const goalsTxt = x.scored.length ? x.scored.map((e) => `${e.m}'`).join(', ') : '—';
+      const assistTxt = x.assisted.length ? x.assisted.map((e) => `${nm(e.s)} ${e.m}'`).join(', ') : '—';
+      return `<div class="ps-sel">
+        <div class="ps-sel-head">
+          <div><span class="label">${label(g)} · ${g.home ? 'Home' : 'Away'} · ${g.home ? 'vs' : '@'} ${esc(g.opp)}</span>
+          <b>${scoreText(g)} <span class="${cellRes(g)}">${{ W: 'Win', D: 'Draw', L: 'Loss' }[cellRes(g)]}</span></b></div>
+          ${chip(x.r)}${canWatch(g) ? watchBtn(PS.src, g.mi) : ''}
+        </div>
+        <div class="kv-grid">
+          ${st('Minutes', g.et ? 120 : 90)}${st('Goals', `${x.goals}${x.goals ? ` <small>${goalsTxt}</small>` : ''}`)}
+          ${st('Assists', `${x.assists}${x.assists ? ` <small>${assistTxt}</small>` : ''}`)}${st('Team goals', `${g.gf} for · ${g.ga} against`)}
+          ${line === 'GK' || line === 'DEF' ? st('Clean sheet', g.ga === 0 ? 'Yes' : 'No') : st('Goal involvements', x.goals + x.assists)}${st('Man of the Match', x.motm ? 'Yes' : 'No')}
+        </div>
+        <div class="group-title">Rating breakdown</div>
+        <div class="ps-break">
+          <div><span>Starting rating</span><b>6.0</b></div>
+          ${x.parts.map((q) => `<div><span>${esc(q.label)}</span><b class="${q.v > 0 ? 'up' : 'down'}">${sgnf(q.v)}</b></div>`).join('')}
+          <div class="tot"><span>Match rating</span><b>${x.r.toFixed(1)}</b></div>
+        </div>
+      </div>`;
+    };
     $('#player-body').innerHTML = `
       <div class="ps-head">
         <div class="ps-sprite"><img src="${spriteUrl(id, 'pixel')}" alt="" onerror="this.onerror=null;this.src='${SPR}other/official-artwork/${id}.png'"></div>
@@ -3387,9 +3419,7 @@
       </div>
       <div class="group-title">Match ratings</div>
       <div class="ps-chart" role="list">${rows.map((x) => `<button role="listitem" class="ps-bar${PS.sel === x.n ? ' on' : ''}" data-pbar="${x.n}" title="${label(x.g)} ${x.g.home ? 'vs' : '@'} ${esc(x.g.opp)} ${scoreText(x.g)} · ${x.r.toFixed(1)}"><i style="height:${Math.round(Math.max(5, ((x.r - 3) / 7) * 80))}px;background:${ratingColor(x.r)}"></i></button>`).join('')}</div>
-      ${sel ? `<div class="ps-sel">
-        <div><span class="label">${label(sel.g)} · ${sel.g.home ? 'vs' : '@'} ${esc(sel.g.opp)}</span><b>${scoreText(sel.g)} <span class="${cellRes(sel.g)}">${cellRes(sel.g)}</span></b><span class="muted small-text">${contrib(sel) || 'No goal involvements'}</span></div>
-        ${chip(sel.r)}${canWatch(sel.g) ? watchBtn(PS.src, sel.g.mi) : ''}</div>` : '<p class="muted small-text">Tap a bar to see that match.</p>'}
+      ${sel ? matchBreakdown(sel) : '<p class="muted small-text">Tap a bar (or a match below) for its full breakdown.</p>'}
       <div class="group-title">Base stats</div>
       ${statHead()}<div class="pk ps-stats" aria-hidden="true"><span></span><span class="pk-main"><span class="no">${pkMeta(p)}</span></span>${statBars(p)}</div>
       <div class="group-title">Matches</div>

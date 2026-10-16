@@ -1912,7 +1912,7 @@
         <div class="group-title">Your squad</div>
         <div class="table-wrap"><table class="league squad">
           <tr><th class="team">Player</th><th>RTG</th><th>G</th><th>A</th><th>CS</th></tr>
-          ${e.squad.slice().sort((a, b) => b.rtg - a.rtg).map((p) => `<tr><td class="team"><span class="ppos" style="color:${posColor(p.pos)}">${p.pos}</span>${p.id ? pkName(p.id) : '?'}</td><td><b style="color:${perfColor(p.rtg)}">${p.rtg}</b></td><td>${p.g}</td><td>${p.a}</td><td>${p.cs}</td></tr>`).join('')}
+          ${e.squad.map((p, i) => Object.assign({ i }, p)).sort((a, b) => b.rtg - a.rtg).map((p) => `<tr${p.id ? ` class="clickable" data-hseason="${e.id}:${p.i}"` : ''}><td class="team"><span class="ppos" style="color:${posColor(p.pos)}">${p.pos}</span>${p.id ? pkName(p.id) : '?'}</td><td><b style="color:${perfColor(p.rtg)}">${p.rtg}</b></td><td>${p.g}</td><td>${p.a}</td><td>${p.cs}</td></tr>`).join('')}
         </table></div>
       </div></details>`;
   }
@@ -3531,6 +3531,15 @@
     $('#player-modal').hidden = false;
   }
 
+  function openSavedSeason(histId, slot) {
+    const e = HIST.find((x) => x.id === histId), id = e && e.squad[slot] && e.squad[slot].id;
+    if (!id) return;
+    const csel = HIST.filter((h) => h.squad.some((x) => x.id === id)).reverse().indexOf(e);
+    if (!e.games) { openCareer(id, csel); $('#player-body').scrollTop = 0; return; }
+    PS = { hist: histId, slot, ci: 0, src: 'league', sel: null, career: id, csel };
+    renderPlayer(); $('#player-modal').hidden = false; $('#player-body').scrollTop = 0;
+  }
+
   $('#player-close').addEventListener('click', closePlayer);
   $('#player-modal').addEventListener('click', (e) => {
     if (e.target.id === 'player-modal') { closePlayer(); return; }
@@ -3560,9 +3569,10 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#player-modal').hidden) closePlayer(); });
   // Rows anywhere (squad tables, awards, club pages, careers) open the sheet.
   document.addEventListener('click', (e) => {
-    const pl = e.target.closest('[data-player]'), ca = e.target.closest('[data-career]');
-    if (!pl && !ca) return;
+    const pl = e.target.closest('[data-player]'), ca = e.target.closest('[data-career]'), hs = e.target.closest('[data-hseason]');
+    if (!pl && !ca && !hs) return;
     e.stopPropagation();
+    if (hs) { const [h, s] = hs.dataset.hseason.split(':').map(Number); openSavedSeason(h, s); return; }
     if (ca) { openCareer(+ca.dataset.career); return; }
     const [src, ci, slot] = pl.dataset.player.split(':');
     openPlayer({ src, ci: +ci, slot: +slot });

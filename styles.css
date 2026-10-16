@@ -697,3 +697,8 @@ button.award:hover { background: var(--surface-2); }
   .ps-id h2 { font-size: 28px; }
   .ps-tiles { grid-template-columns: repeat(2, 1fr); }
 }
+/* The sheet scrolls as one page; sections keep their natural height (no squeezed inner lists). */
+.player-body { flex: 1 1 auto; min-height: 0; overscroll-behavior: contain; }
+.player-body > * { flex-shrink: 0; }
+.ps-list { max-height: none; overflow: visible; }
+.player-body .opt-head { position: static; }

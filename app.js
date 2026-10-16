@@ -3429,7 +3429,12 @@
     if (e.target.id === 'player-modal') { closePlayer(); return; }
     if (!PS) return;
     const bar = e.target.closest('[data-pbar]'), comp = e.target.closest('[data-pcomp]'), club = e.target.closest('[data-pclub]');
-    if (bar) { PS.sel = +bar.dataset.pbar; renderPlayer(); }
+    if (bar) {
+      PS.sel = +bar.dataset.pbar;
+      renderPlayer();
+      // Picked from the match list further down: bring the selected match (under the chart) into view.
+      if (bar.classList.contains('ps-row')) $('#player-body').scrollTop = 0;
+    }
     else if (comp) { PS.src = comp.dataset.pcomp; PS.sel = null; renderPlayer(); }
     else if (club) { const src = PS.src, ci = +club.dataset.pclub; closePlayer(); openClub(src, ci); }
   });

@@ -1196,27 +1196,39 @@
       <div class="sim-ctl">
         <div class="seg small" id="lv-mode"><button data-m="auto">Auto</button><button data-m="manual">Manual</button></div>
         <div class="seg small" id="lv-speed">${SIM_SPEEDS.map(([v, l]) => `<button data-s="${v}">${l}</button>`).join('')}</div>
-        <button class="btn btn-gold wide" id="lv-next" hidden>Next match ▶</button>
+        <div class="lv-manual" id="lv-manual" hidden>
+          <div class="lv-fixture"><span class="label">Up next</span><span id="lv-fixture"></span></div>
+          <div class="lv-manual-btns"><button class="btn btn-gold" id="lv-next" title="Sim match (→)">Sim match</button><button class="btn" id="lv-watchnow" title="Watch match (W)">Watch match</button></div>
+        </div>
       </div>
       <div class="lv-actions">${cfg.res && cfg.res.clubs ? '<button class="btn" id="lv-watch">Watch next match</button>' : ''}<button class="btn" id="lv-skip">Skip to the end</button></div>`;
     const cells = $$('.form-strip i', box);
     let i = 0, w = 0, d = 0, l = 0, gf = 0, ga = 0;
     const finish = () => {
-      clearTimeout(seasonTimer); seasonTimer = null; skipPlayback = null; manualNext = null;
+      clearTimeout(seasonTimer); seasonTimer = null; skipPlayback = null; manualNext = null; manualWatch = null;
       render();
       cfg.onFinish();
       saveAll();
     };
     skipPlayback = finish;
+    let watchNext = false;
+    const watchBtnEl = $('#lv-watch', box);
 
-    // Auto plays on a timer (scaled by speed); manual waits for "Next match".
+    // Auto plays on a timer (scaled by speed); manual shows the next fixture with Sim / Watch buttons.
     const nextBtn = $('#lv-next', box);
+    const canWatch = (g) => !!(g && cfg.res && cfg.res.clubs && matchIndex(cfg.res, g) >= 0);
     const syncCtl = () => {
+      const manual = S.simMode === 'manual';
       $$('#lv-mode button', box).forEach((b) => b.classList.toggle('on', b.dataset.m === S.simMode));
       $$('#lv-speed button', box).forEach((b) => b.classList.toggle('on', +b.dataset.s === S.simSpeed));
-      $('#lv-speed', box).hidden = S.simMode !== 'auto';
-      nextBtn.hidden = S.simMode !== 'manual' || i >= games.length;
-      if (games[i]) nextBtn.textContent = `Next: ${cfg.short(games[i])} ${games[i].home ? 'vs' : '@'} ${games[i].opp} ▶`;
+      $('#lv-speed', box).hidden = manual;
+      $('#lv-manual', box).hidden = !manual || i >= games.length;
+      if (watchBtnEl) watchBtnEl.hidden = manual;
+      const g = games[i];
+      if (g) {
+        $('#lv-fixture', box).textContent = `${cfg.label(g, i)} · ${g.home ? 'vs' : '@'} ${g.opp}`;
+        $('#lv-watchnow', box).hidden = !canWatch(g);
+      }
     };
     const schedule = (ms) => {
       clearTimeout(seasonTimer);
@@ -1225,7 +1237,9 @@
       syncCtl();
     };
     manualNext = () => { if (S.simMode === 'manual' && i < games.length && $('#live').hidden) step(); };
+    manualWatch = () => { if (S.simMode === 'manual' && i < games.length && $('#live').hidden && canWatch(games[i])) { watchNext = true; step(); } };
     nextBtn.addEventListener('click', () => manualNext && manualNext());
+    $('#lv-watchnow', box).addEventListener('click', () => manualWatch && manualWatch());
     $('#lv-mode', box).addEventListener('click', (e) => {
       const b = e.target.closest('[data-m]');
       if (!b || b.dataset.m === S.simMode) return;
@@ -1240,8 +1254,6 @@
       syncCtl();
     });
 
-    let watchNext = false;
-    const watchBtnEl = $('#lv-watch', box);
     if (watchBtnEl) watchBtnEl.addEventListener('click', () => {
       watchNext = !watchNext;
       watchBtnEl.textContent = watchNext ? 'Watching next match' : 'Watch next match';
@@ -1251,7 +1263,7 @@
     const step = () => {
       const g = games[i];
       const mi = cfg.res && cfg.res.clubs ? matchIndex(cfg.res, g) : -1;
-      if (mi >= 0 && !REDUCE && (watchNext || (cfg.autoWatch && cfg.autoWatch(g)))) {
+      if (mi >= 0 && !REDUCE && (watchNext || (S.simMode === 'auto' && cfg.autoWatch && cfg.autoWatch(g)))) {
         watchNext = false;
         if (watchBtnEl) { watchBtnEl.textContent = 'Watch next match'; watchBtnEl.classList.remove('on'); }
         openLive(cfg.res, mi, { fromPlayback: true, onClose: () => { if (skipPlayback === finish) reveal(); } });
@@ -1285,10 +1297,12 @@
   }
   // Season playback speeds: multipliers on each competition's base pacing ("Fast" = the original pace).
   const SIM_SPEEDS = [[0.15, 'Slow'], [0.4, 'Normal'], [1, 'Fast'], [4, 'Turbo']];
-  let manualNext = null;
+  let manualNext = null, manualWatch = null;
   document.addEventListener('keydown', (e) => {
     if (!manualNext || (e.target.closest && e.target.closest('input, textarea, select'))) return;
-    if ((e.key === 'ArrowRight' || e.key.toLowerCase() === 'n') && $$('.modal').every((m) => m.hidden)) { e.preventDefault(); manualNext(); }
+    if (!$$('.modal').every((m) => m.hidden)) return;
+    if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'n') { e.preventDefault(); manualNext(); }
+    else if (e.key.toLowerCase() === 'w' && manualWatch) { e.preventDefault(); manualWatch(); }
   });
 
   // ---------------- Match simulation ----------------

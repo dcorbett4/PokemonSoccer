@@ -646,3 +646,11 @@ button.award:hover { background: var(--surface-2); }
 .tr-sub { font-size: 12.5px; color: var(--ink-2); }
 .tabs button, .result-tabs button { white-space: nowrap; }
 .rec-tabs { gap: 16px; }
+
+/* Manual season playback: next fixture with Sim / Watch */
+.lv-manual { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 2px; border-top: 1px solid var(--rule); }
+.lv-fixture { display: flex; flex-direction: column; gap: 2px; font-family: var(--display); font-weight: 700; font-size: 20px; line-height: 1.1; }
+.lv-manual-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.lv-manual-btns .btn { width: 100%; }
+.lv-manual-btns .btn:only-child, .lv-manual-btns .btn:first-child:nth-last-child(2):has(+ [hidden]) { grid-column: 1 / -1; }
+.lv-actions:has(#lv-watch[hidden]) { grid-template-columns: 1fr; }
